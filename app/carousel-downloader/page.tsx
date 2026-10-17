@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Carousel Downloader — Save All Slides at Once | InstaGrab",
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="photo" self="/carousel-downloader"
       eyebrow="Carousel downloader"
       h1={<>Carousel downloader — all ten slides, <em className="gilded">complete</em>.</>}
       lead="Every photo and video in a multi-slide post, each with its own HD download."
@@ -27,6 +27,6 @@ export default function Page() {
       <p>Carousels often mix formats. InstaGrab returns each slide in its original format — photos as full-resolution JPG, videos as HD MP4 with audio — so nothing is lost or re-compressed.</p>
       <h2>The text comes too</h2>
       <p>The complete caption, every hashtag and any @mentions are extracted once for the whole post, ready to copy — useful when you&apos;re archiving or reposting with credit.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
