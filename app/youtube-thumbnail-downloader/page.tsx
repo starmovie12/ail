@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import SimpleToolLanding from "@/components/SimpleToolLanding";
-import YtThumbnail from "@/components/YtThumbnail";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "YouTube Thumbnail Downloader — Full HD, Free | InstaGrab",
@@ -11,12 +10,10 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <SimpleToolLanding
+    <PlatformPage platform="youtube" self="/youtube-thumbnail-downloader"
       eyebrow="YouTube thumbnail downloader"
       h1={<>Any YouTube thumbnail, <em className="gilded">full HD</em>.</>}
       lead="Paste a video or Shorts link — get every available thumbnail size, up to 1280×720, with one-click downloads."
-      tool={<YtThumbnail />}
-      wide
       faq={[
         { q: "Which links work?", a: "All of them: youtube.com/watch, youtu.be short links, Shorts, embeds and live URLs. You can even paste a bare 11-character video ID." },
         { q: "Why is there no Full HD option for some videos?", a: "The 1280×720 (maxres) thumbnail only exists when the creator uploaded a high-resolution custom thumbnail. For older or auto-thumbnail videos, the largest available size is shown instead." },
@@ -30,6 +27,6 @@ export default function Page() {
       <p>Thumbnails decide clicks. Collecting the thumbnails of the top videos in your niche — full-size, side by side — is the fastest way to see the patterns: face size, text length, colour contrast. Build your reference board here, then design yours better.</p>
       <h2>Works with Shorts too</h2>
       <p>Shorts links, classic watch URLs, youtu.be shares, even raw video IDs — paste anything and the tool extracts the right video automatically, hiding sizes that don&apos;t exist for that upload.</p>
-    </SimpleToolLanding>
+    </PlatformPage>
   );
 }
