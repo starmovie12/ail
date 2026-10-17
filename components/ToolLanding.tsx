@@ -1,5 +1,4 @@
-import Nav from "./Nav";
-import Footer from "./Footer";
+import LegalFoot from "@/components/LegalFoot";
 import GoldenBar from "./GoldenBar";
 import TrustLine from "./TrustLine";
 import HowItWorks from "./HowItWorks";
@@ -21,9 +20,8 @@ export default function ToolLanding({
   return (
     <>
       <JsonLd data={faqJsonLd(faq ?? DEFAULT_FAQ)} />
-      <Nav />
       <main>
-        <section style={{ position: "relative", padding: "88px 0 64px", textAlign: "center", overflow: "hidden" }}>
+        <section style={{ position: "relative", padding: "20px 0 56px", textAlign: "center", overflow: "hidden" }}>
           <div aria-hidden="true" style={{
             position: "absolute", top: "-25%", left: "50%", transform: "translateX(-50%)",
             width: 800, height: 500, pointerEvents: "none",
@@ -56,7 +54,7 @@ export default function ToolLanding({
 
         <FAQ items={faq} />
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
