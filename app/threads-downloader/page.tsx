@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import SimpleToolLanding from "@/components/SimpleToolLanding";
-import OgDownloader from "@/components/OgDownloader";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Threads Downloader — Save Threads Videos & Photos Free | InstaGrab",
@@ -11,11 +10,10 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <SimpleToolLanding
+    <PlatformPage platform="threads" self="/threads-downloader"
       eyebrow="Threads downloader"
       h1={<>Threads media, <em className="gilded">saved</em>.</>}
       lead="Paste any public Threads post link — we pull the video or photo in original quality."
-      tool={<OgDownloader platform="Threads" hostHint={"threads\\.(net|com)/"} placeholder="Paste a Threads post link (threads.net/…)" />}
       faq={[
         { q: "Which posts work?", a: "Public Threads posts with a photo or video. Text-only threads have nothing to download, and private profiles stay private." },
         { q: "Why a Threads downloader?", a: "Threads is Meta's fastest-growing platform and has no save button at all. Same InstaGrab engine, new platform — most downloader sites haven't caught up yet." },
@@ -26,6 +24,6 @@ export default function Page() {
       <p>Threads launched without downloads and still barely has them. When a thread has the clip or image you need, paste the link here — same one-box flow as our Instagram tools, because it&apos;s the same family of platforms underneath.</p>
       <h2>Early platform, early advantage</h2>
       <p>Threads content is fresh territory: fewer reposts, faster trends, and barely any tooling. Creators mining Threads for content ideas get there before the Instagram crowd does.</p>
-    </SimpleToolLanding>
+    </PlatformPage>
   );
 }
