@@ -467,7 +467,10 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem("ig-lang", l); } catch {}
   }
 
-  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = ["ar", "ur", "fa"].includes(lang) ? "rtl" : "ltr"; // PRD A15
+  }, [lang]);
 
   const t = (k: Keys) => STRINGS[lang]?.[k] ?? EN[k];
 
