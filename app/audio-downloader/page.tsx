@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Reel Audio Downloader — Save the Sound as MP3/M4A | InstaGrab",
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="audio" self="/audio-downloader"
       eyebrow="Audio downloader"
       h1={<>Reel audio — just the <em className="gilded">sound</em>.</>}
       lead="Rip the trending music or voiceover from any public reel as an audio file — no video attached."
@@ -27,6 +27,6 @@ export default function Page() {
       <p>Creators constantly need the <strong>trending sound</strong> from a reel to reuse in their own edits, and podcasters or students want the voiceover without a heavy video file. Instead of downloading the full MP4 and stripping the audio in an editor, InstaGrab hands you the audio track directly — no re-encoding, no quality loss.</p>
       <h2>No transcoding, no watermark</h2>
       <p>The file comes straight from Instagram&apos;s CDN exactly as uploaded. We don&apos;t re-compress it or add anything — you get the original audio.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
