@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Video Downloader — Save Videos & IGTV in HD | InstaGrab",
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="video" self="/video-downloader"
       eyebrow="Video downloader"
       h1={<>Instagram video downloader — any video, <em className="gilded">in HD</em>.</>}
       lead="Reels, IGTV and video posts in HD MP4 — with the full caption and hashtags."
@@ -27,6 +27,6 @@ export default function Page() {
       <p>You don&apos;t need a different tool for each format. InstaGrab detects what the link points to and fetches the right media, together with the complete caption, every hashtag as a tappable chip, and any @mentions.</p>
       <h2>Quality and watermarks</h2>
       <p>Files come straight from Instagram&apos;s own CDN, so quality is exactly what was uploaded — no re-compression, no watermark added by us. Audio is included in the MP4.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
