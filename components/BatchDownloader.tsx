@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Loader2, Check, X, ListChecks } from "lucide-react";
 import type { ExtractResult } from "@/lib/extract-ui";
 import { dl } from "@/lib/media";
+import { takeHandoff } from "@/lib/storage";
 
 const URL_RE = /instagram\.com\/(?:[\w.]+\/)?(?:p|reel|reels|tv|stories)\/[\w-]+/gi;
 const MAX = 20;
@@ -13,6 +14,18 @@ export default function BatchDownloader() {
   const [text, setText] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
+
+  // Home / quick-action se 2+ Instagram links pre-fill (PRD §7.6.7). Handoff ek-baar-padho.
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("src") !== "home") return;
+      const h = takeHandoff();
+      const urls = h?.url || sp.get("url") || "";
+      if (urls) setText(urls);
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    } catch { /* ignore */ }
+  }, []);
 
   function parse(): string[] {
     const found = text.match(URL_RE) ?? [];
