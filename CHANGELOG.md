@@ -1,3 +1,15 @@
+# Changelog
+
+## UI/UX Redesign (PRD_Website_UI_UX_Redesign) — app-shell release
+
+**Shell:** one `AppShell` — tab screens (Home, Tools, History, Settings) get Global Header (logo + language + theme) and Bottom Nav; every other page is a detail screen with a Back Bar. `/admin`, `/offline`, `/s/*` are shell-free. Old `Nav`/`Footer` removed; detail pages end with a short `LegalFoot`.
+**Home:** Hero banner → Smart Link Box → How to Download → Tools & Platforms. The textbox is now a router (`lib/router.ts`, 22 unit tests): paste / Grab / Enter / drop → detects app + kind on-device → opens the right app page with a sessionStorage handoff and auto-start. Neon card design (banner, textbox, Paste Link / Grab Media, trust row, "Tools Auto-Supported" card, trust foot bar) kept pixel-identical; the tools count is now computed from the registry.
+**New screens:** `/tools` (search, category pills, recents, tool of the day, apps row), `/history` (unified v2 store, Re-grab, delete + UNDO, Clear All), `/settings` (language, theme, download prefs, Advanced Session ID / Cobalt, install, legal), `/how-to-download`, `/instagram-downloader`, `/coming-soon/[id]`.
+**One engine:** `PlatformDownloader` + `ResultPanel` serve Instagram + Facebook/TikTok/YouTube/Pinterest/X/Threads (old OgDownloader/TwitterDownloader/YtThumbnail/ResultCard/CreatorPack/HistoryList removed). Auto-detect rules R1–R15, mismatch redirect, kind banner, 10 s re-fetch guard, iOS save pulse.
+**Data:** `lib/registry.ts` is the single tool list (94 visible); sitemap, Command Palette and Back Bar read it. `lib/platforms.ts` capability map. History/prefs/handoff in `lib/storage.ts` with one-time migration of the two old history stores.
+**Security:** Session ID / Cobalt URL from Settings now actually reach the API (POST body only, never logged); Cobalt URL validated server-side against SSRF (`lib/safe-url.ts`, https-only, private IP / metadata / localhost blocked, redirects refused).
+**Misc:** viewport-fit=cover + safe-area insets, RTL `dir` for ar/ur/fa, 16px mobile inputs, default theme dark, manifest shortcuts, SW cache v3.
+
 # CHANGELOG — Unified theme, animated background, responsive sizing
 
 ## Final palette (single source: `app/tokens.css`)
