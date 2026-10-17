@@ -21,13 +21,23 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   cursor: pointer;
   color: #fff;
   font-family: var(--os-sans), "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
-  background:
-    radial-gradient(90% 45% at 50% 38%, rgba(60, 70, 220, .22), transparent 70%),
-    radial-gradient(70% 40% at 50% 100%, rgba(124, 58, 237, .30), transparent 70%),
-    linear-gradient(180deg, #02051a 0%, #040a2c 45%, #070633 80%, #0a0540 100%);
+  /* Pehla frame: seedha wahi flat colour jo Android ki system splash
+     (manifest background_color) ka hai => dono ke beech jhatka nahi dikhta. */
+  background: #050B24;
   transition: opacity .5s ease, transform .5s ease;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+}
+.os::before {   /* asli gradient background — halke se fade-in hota hai */
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 45% at 50% 38%, rgba(60, 70, 220, .22), transparent 70%),
+    radial-gradient(70% 40% at 50% 100%, rgba(124, 58, 237, .30), transparent 70%),
+    linear-gradient(180deg, #050B24 0%, #050B24 40%, #070633 80%, #0a0540 100%);
+  opacity: 0;
+  animation: osFadeIn .9s .05s ease forwards;
 }
 .os--hide { opacity: 0; transform: scale(1.05); pointer-events: none; }
 
@@ -135,9 +145,10 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   border-radius: 50%;
   background: radial-gradient(circle,
     rgba(80, 90, 255, .30) 0%, rgba(124, 58, 237, .16) 40%, transparent 70%);
-  animation: osBreathe 3.4s ease-in-out infinite;
+  opacity: 0;
+  animation: osAuraIn .9s .4s ease forwards, osBreathe 3.4s 1.3s ease-in-out infinite;
 }
-.os-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.os-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; opacity: 0; animation: osFadeIn .9s .45s ease forwards; }
 .os-ring {
   transform-box: fill-box;
   transform-origin: center;
@@ -152,9 +163,12 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   position: absolute;
   left: 50%; top: 57.6%;
   width: 40.5%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  animation: osHeroIn .9s .05s cubic-bezier(.2, 1.2, .3, 1) forwards;
+  /* Hand-off: Android ki system splash ka icon screen ke bilkul beech mein
+     hota hai. Hero wahin se shuru hota hai (--hero-shift) aur apni jagah
+     par aa jaata hai. */
+  --hero-shift: calc(114.35cqw - 50dvh);
+  transform: translate(-50%, calc(-50% + var(--hero-shift))) scale(.8);
+  animation: osHeroIn .8s .15s cubic-bezier(.22, .8, .2, 1) forwards;
 }
 .os-hero__ring {
   padding: 2.6cqw;
@@ -189,7 +203,9 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   right: -5.5%; top: -7%;
   width: 17%;
   filter: drop-shadow(0 0 1.4cqw rgba(34, 228, 255, .95));
-  animation: osSparkle 2.2s ease-in-out infinite;
+  opacity: 0;
+  transform: scale(.8);
+  animation: osFadeIn .4s .5s ease forwards, osSparkle 2.2s 1s ease-in-out infinite;
 }
 
 /* ── glossy 3D tiles ──────────────────────────────────────────────────── */
@@ -348,6 +364,10 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
 
 /* ── keyframes ────────────────────────────────────────────────────────── */
 @keyframes osFadeIn  { to { opacity: 1; } }
+@keyframes osAuraIn  {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
+  to   { opacity: .75; transform: translate(-50%, -50%) scale(.96); }
+}
 @keyframes osRise    { to { opacity: 1; transform: none; } }
 @keyframes osUp      { to { opacity: 1; transform: none; } }
 @keyframes osPop {
@@ -355,8 +375,8 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   100% { opacity: 1; transform: none; }
 }
 @keyframes osHeroIn {
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  0%   { transform: translate(-50%, calc(-50% + var(--hero-shift))) scale(.8); }
+  100% { transform: translate(-50%, -50%) scale(1); }
 }
 @keyframes osFloat {
   0%, 100% { transform: rotate(var(--rot)) translateY(0); }
@@ -384,6 +404,8 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
 /* ── reduced motion: sab seedha dikhe, koi hilna-dulna nahi ───────────── */
 @media (prefers-reduced-motion: reduce) {
   .os, .os * { animation: none !important; transition: none !important; }
+  .os::before, .os-rings, .os-hero__spark { opacity: 1 !important; }
+  .os-aura { opacity: .9 !important; }
   .os-arc, .os-planet, .os-hero, .os-tile__pop, .os-title, .os-sub, .os-feats, .os-script {
     opacity: 1 !important; transform: none !important;
   }
