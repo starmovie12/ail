@@ -1,8 +1,7 @@
+import LegalFoot from "@/components/LegalFoot";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WifiOff, History, ArrowRight } from "lucide-react";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "You're offline | InstaGrab",
@@ -13,9 +12,8 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <Nav />
       <main>
-        <section style={{ padding: "110px 0 90px", textAlign: "center" }}>
+        <section style={{ padding: "40px 0 48px", textAlign: "center" }}>
           <div className="container" style={{ maxWidth: 560 }}>
             <span className="medallion" style={{ margin: "0 auto 20px", color: "var(--warn)" }}>
               <WifiOff size={26} strokeWidth={1.5} />
@@ -39,7 +37,7 @@ export default function Page() {
           </div>
         </section>
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
