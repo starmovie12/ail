@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Reels Downloader — HD MP4, Free, No Login | InstaGrab",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="reel" self="/reels-downloader"
       eyebrow="Reels downloader"
       h1={<>Instagram Reels downloader — every reel, <em className="gilded">flawlessly</em>.</>}
       lead="HD MP4, the full caption, and every hashtag — from any public reel."
@@ -22,6 +22,6 @@ export default function Page() {
       <p>Most reel downloaders hand you a file and nothing else. InstaGrab fetches the <strong>whole post</strong>: the video, the complete caption ready to copy, every hashtag as a tappable chip, and any @mentions. If you save reels for reference or repost with credit, that text matters as much as the video.</p>
       <h2>Quality and watermarks</h2>
       <p>Files come straight from Instagram&apos;s own CDN, so quality is exactly what was uploaded — no re-compression, no watermark added by us. Audio is included in the MP4.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
