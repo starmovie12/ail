@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Photo Downloader — Original Quality, Carousels Too | InstaGrab",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="photo" self="/photo-downloader"
       eyebrow="Photo downloader"
       h1={<>Photo downloader — original quality, <em className="gilded">untouched</em>.</>}
       lead="Full-resolution JPGs straight from the source — carousels included, every slide."
@@ -22,6 +22,6 @@ export default function Page() {
       <p>Paste a carousel link and you&apos;ll see every slide in a strip — download each one individually, in order, with clear numbering. No more &ldquo;it only saved the first photo.&rdquo;</p>
       <h2>Caption and tags come along</h2>
       <p>Like every InstaGrab tool, the photo arrives with its caption, hashtags and mentions ready to copy — useful for moodboards, credits and reposts with permission.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
