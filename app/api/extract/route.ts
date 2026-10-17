@@ -5,6 +5,9 @@ import {
   extractHighlightItems,
   ExtractError,
   parseInstagramUrl,
+  fetchViaSnapSave,
+  fetchViaPublicResolver,
+  resolveFacebookShortlink,
   type RequestOptions,
 } from "@/lib/instagram-extractor";
 import {
@@ -142,6 +145,55 @@ function toUnifiedPayload(
   };
 }
 
+type LegacyMedia = {
+  type: "video" | "image";
+  url: string;
+  thumbnail?: string;
+  qualities?: { label: string; url: string }[];
+};
+type LegacyResult = {
+  success?: boolean;
+  media?: LegacyMedia[];
+  caption?: string;
+  author?: { username?: string };
+} | null;
+
+/** SnapSave / public-resolver ka jawab → site ka Unified format (quality list ke saath). */
+function legacyToUnified(
+  r: LegacyResult,
+  platform: "instagram" | "facebook",
+  targetUrl: string,
+  shortcode: string
+): UnifiedExtractResponse | null {
+  if (!r?.success || !r.media?.length) return null;
+  const slides: Slide[] = r.media
+    .filter((m) => m?.url)
+    .map((m) => ({
+      type: m.type === "video" ? "video" : "image",
+      url: m.url,
+      thumbnail: m.thumbnail || m.url,
+      versions: m.qualities?.length
+        ? m.qualities.map((q) => ({ label: q.label, url: q.url }))
+        : [{ label: m.type === "video" ? "HD" : "Original", url: m.url }],
+    }));
+  if (!slides.length) return null;
+  const caption = r.caption ?? "";
+  return toUnifiedPayload(
+    {
+      kind: slides.length > 1 ? "carousel" : slides[0].type === "video" ? "reel" : "post",
+      shortcode,
+      username: r.author?.username || `${platform}_creator`,
+      caption,
+      hashtags: extractHashtags(caption),
+      mentions: extractMentions(caption),
+      thumbnail: slides[0].thumbnail,
+      slides,
+    },
+    platform,
+    targetUrl
+  );
+}
+
 /** 2. Public Fallback Resolvers for Instagram & Facebook (from instagrab-main) */
 async function fetchViaPublicFallback(
   targetUrl: string,
@@ -203,6 +255,17 @@ async function fetchViaPublicFallback(
     } catch {}
   }
 
+  // 2A+. SnapSave + public resolvers (parallel; priority order mein pehla jawab lo)
+  const settled = await Promise.allSettled([
+    fetchViaSnapSave(targetUrl, shortcode, platform),
+    fetchViaPublicResolver(targetUrl, shortcode, platform),
+  ]);
+  for (const r of settled) {
+    if (r.status !== "fulfilled") continue;
+    const unified = legacyToUnified(r.value as LegacyResult, platform, targetUrl, shortcode);
+    if (unified) return unified;
+  }
+
   // 2B. Try Custom Cobalt Instance if provided
   const cobaltUrl = (
     cobaltInstance ||
@@ -256,25 +319,95 @@ async function fetchViaPublicFallback(
 }
 
 /** 3. Native Facebook Video, Reel & Shortlink Extractor (from instagrab-main) */
-async function resolveFacebookShortlink(url: string): Promise<string> {
-  if (!/(?:fb\.watch|fb\.me|\/share\/[rv]?\/)/i.test(url)) return url;
-  try {
-    const res = await fetch(url, {
-      redirect: "manual",
-      headers: {
-        "User-Agent":
-          "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-    const loc = res.headers.get("location");
-    if (loc) {
-      return loc.startsWith("http")
-        ? loc
-        : new URL(loc, "https://www.facebook.com").toString();
-    }
-  } catch {}
-  return url;
+const FB_DESKTOP_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const FB_BOT_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+const FB_MOBILE_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+
+/** Ek Facebook page (ek User-Agent) scrape karo. Video na mile to null — photo sirf photo/post links par. */
+async function scrapeFacebookPage(
+  pageUrl: string,
+  ua: string,
+  id: string,
+  canonicalUrl: string
+): Promise<UnifiedExtractResponse | null> {
+  const res = await fetch(pageUrl, {
+    redirect: "follow",
+    headers: {
+      "User-Agent": ua,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+
+  const hdMatch =
+    html.match(/browser_native_hd_url["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/playable_url_quality_hd["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/hd_src_no_ratelimit["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/hd_src["']?\s*:\s*["']([^"']+)["']/i);
+
+  const sdMatch =
+    html.match(/browser_native_sd_url["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/playable_url["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/sd_src_no_ratelimit["']?\s*:\s*["']([^"']+)["']/i) ||
+    html.match(/sd_src["']?\s*:\s*["']([^"']+)["']/i);
+
+  const ogVideo =
+    metaContent(html, "og:video:secure_url") ||
+    metaContent(html, "og:video") ||
+    metaContent(html, "og:video:url");
+
+  const hdUrl = decodeEscaped(hdMatch?.[1]);
+  const sdUrl = decodeEscaped(sdMatch?.[1]);
+  const videoUrl = hdUrl || sdUrl || decodeEscaped(ogVideo);
+
+  const thumb =
+    metaContent(html, "og:image") || metaContent(html, "twitter:image") || "";
+
+  const title =
+    metaContent(html, "og:title") || metaContent(html, "twitter:title") || "Facebook Media";
+  const caption =
+    metaContent(html, "og:description") || metaContent(html, "twitter:description") || title;
+
+  // Video link par sirf thumbnail mile to usse "photo" bana ke NAHI dena — warna user ko video ki jagah
+  // image download hoti hai. Aise me null return → SnapSave / resolvers chalenge.
+  const isPhotoLike = /\/photo|\/photos\/|\/posts\/|story\.php|\/permalink/i.test(canonicalUrl);
+  if (!videoUrl && !(thumb && isPhotoLike)) return null;
+
+  const isVideo = Boolean(videoUrl);
+  const versions: { label: string; url: string }[] = [];
+  if (hdUrl) versions.push({ label: "1080p HD", url: hdUrl });
+  if (sdUrl) versions.push({ label: "720p SD", url: sdUrl });
+  if (!versions.length && videoUrl) versions.push({ label: "HD", url: videoUrl });
+  if (!isVideo && thumb) versions.push({ label: "Original", url: thumb });
+
+  const slide: Slide = {
+    type: isVideo ? "video" : "image",
+    url: videoUrl || thumb,
+    thumbnail: thumb || (videoUrl as string),
+    versions,
+  };
+
+  return toUnifiedPayload(
+    {
+      kind: isVideo ? "reel" : "post",
+      shortcode: id,
+      username: "facebook_video",
+      caption,
+      hashtags: extractHashtags(caption),
+      mentions: extractMentions(caption),
+      thumbnail: slide.thumbnail,
+      slides: [slide],
+    },
+    "facebook",
+    canonicalUrl,
+    thumb || null,
+    title
+  );
 }
 
 async function extractFacebook(
@@ -299,96 +432,16 @@ async function extractFacebook(
 
   const id = idMatch?.[1] || `fb_${Date.now()}`;
 
-  const uas = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-  ];
-
-  for (const ua of uas) {
-    try {
-      const res = await fetch(resolvedUrl, {
-        redirect: "follow",
-        headers: {
-          "User-Agent": ua,
-          Accept: "text/html,application/xhtml+xml",
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) continue;
-      const html = await res.text();
-
-      const hdMatch =
-        html.match(/browser_native_hd_url["']?\s*:\s*["']([^"']+)["']/i) ||
-        html.match(/playable_url_quality_hd["']?\s*:\s*["']([^"']+)["']/i) ||
-        html.match(/hd_src_no_ratelimit["']?\s*:\s*["']([^"']+)["']/i) ||
-        html.match(/hd_src["']?\s*:\s*["']([^"']+)["']/i);
-
-      const sdMatch =
-        html.match(/browser_native_sd_url["']?\s*:\s*["']([^"']+)["']/i) ||
-        html.match(/playable_url["']?\s*:\s*["']([^"']+)["']/i) ||
-        html.match(/sd_src["']?\s*:\s*["']([^"']+)["']/i);
-
-      const ogVideo =
-        metaContent(html, "og:video:secure_url") ||
-        metaContent(html, "og:video") ||
-        metaContent(html, "og:video:url");
-
-      const hdUrl = decodeEscaped(hdMatch?.[1]);
-      const sdUrl = decodeEscaped(sdMatch?.[1]);
-      const videoUrl = hdUrl || sdUrl || decodeEscaped(ogVideo);
-
-      const thumb =
-        metaContent(html, "og:image") ||
-        metaContent(html, "twitter:image") ||
-        videoUrl ||
-        "";
-
-      const title =
-        metaContent(html, "og:title") ||
-        metaContent(html, "twitter:title") ||
-        "Facebook Media";
-      const caption =
-        metaContent(html, "og:description") ||
-        metaContent(html, "twitter:description") ||
-        title;
-
-      if (videoUrl || thumb) {
-        const isVideo = Boolean(videoUrl);
-        const versions = [];
-        if (hdUrl) versions.push({ label: "1080p HD", url: hdUrl });
-        if (sdUrl) versions.push({ label: "720p SD", url: sdUrl });
-        if (!versions.length && videoUrl) {
-          versions.push({ label: "HD", url: videoUrl });
-        }
-        if (!isVideo && thumb) {
-          versions.push({ label: "Original", url: thumb });
-        }
-
-        const slide: Slide = {
-          type: isVideo ? "video" : "image",
-          url: videoUrl || thumb,
-          thumbnail: thumb,
-          versions,
-        };
-
-        return toUnifiedPayload(
-          {
-            kind: isVideo ? "reel" : "post",
-            shortcode: id,
-            username: "facebook_video",
-            caption,
-            hashtags: extractHashtags(caption),
-            mentions: extractMentions(caption),
-            thumbnail: thumb,
-            slides: [slide],
-          },
-          "facebook",
-          resolvedUrl,
-          thumb,
-          title
-        );
-      }
-    } catch {}
+  // 3 tareeke ek saath (parallel): desktop, Facebook-bot (og:video deta hai), aur m.facebook.com mobile.
+  // Priority order mein pehla jawab lo. (Sequential karne se 30s ka limit khatam ho jata tha.)
+  const mobileUrl = resolvedUrl.replace(/(?:www\.|web\.)?facebook\.com/, "m.facebook.com");
+  const attempts = await Promise.allSettled([
+    scrapeFacebookPage(resolvedUrl, FB_DESKTOP_UA, id, resolvedUrl),
+    scrapeFacebookPage(resolvedUrl, FB_BOT_UA, id, resolvedUrl),
+    scrapeFacebookPage(mobileUrl, FB_MOBILE_UA, id, resolvedUrl),
+  ]);
+  for (const a of attempts) {
+    if (a.status === "fulfilled" && a.value) return a.value;
   }
 
   const fbFallback = await fetchViaPublicFallback(
