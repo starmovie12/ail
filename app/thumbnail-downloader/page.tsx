@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Thumbnail Downloader — Save Reel & Video Covers in HD | InstaGrab",
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" self="/thumbnail-downloader"
       eyebrow="Thumbnail downloader"
       h1={<>Reel &amp; video thumbnails, <em className="gilded">in HD</em>.</>}
       lead="Grab the cover image of any public reel, video or IGTV — the full-resolution poster frame."
@@ -27,6 +27,6 @@ export default function Page() {
       <p>The cover frame is what makes someone stop scrolling. Saving the thumbnails of top-performing reels in your niche lets you spot patterns — framing, text placement, colour — and design better covers of your own. It&apos;s the same reverse-engineering that works for hashtags, applied to visuals.</p>
       <h2>Full quality, straight from the source</h2>
       <p>The image comes directly from Instagram&apos;s CDN, so it&apos;s exactly the resolution Instagram stores — no re-compression, nothing added.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
