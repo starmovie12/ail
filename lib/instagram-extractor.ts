@@ -337,10 +337,22 @@ async function fetchViaInstagramEmbed(shortcode: string) {
       .map((m) => decodeEscaped(m[1]))
       .filter(Boolean) as string[];
 
+    // Embed page par kabhi video seedha <video src> / <source src> mein hota hai
+    const tagVideo = html.match(/<video\b[^>]*\ssrc=["']([^"']+)["']/i) || html.match(/<source\b[^>]*\ssrc=["']([^"']+)["']/i);
+    if (tagVideo) {
+      const v = decodeEscaped(tagVideo[1]);
+      if (v && /^https?:/i.test(v)) videoMatches.unshift(v);
+    }
+
     if (videoMatches.length > 0) {
+      const posterMatch = html.match(/<video\b[^>]*\sposter=["']([^"']+)["']/i);
       const displayMatches = [...html.matchAll(/"display_url":\s*"([^"]+)"/g)]
         .map((m) => decodeEscaped(m[1]))
         .filter(Boolean) as string[];
+      if (posterMatch) {
+        const poster = decodeEscaped(posterMatch[1]);
+        if (poster) displayMatches.unshift(poster);
+      }
       return {
         success: true,
         platform: 'instagram' as const,
@@ -397,26 +409,55 @@ export async function resolveFacebookShortlink(url: string): Promise<string> {
   const isShortlink = /(?:fb\.watch|fb\.me|\/share\/[rv]?\/)/i.test(url);
   if (!isShortlink) return url;
 
-  async function tryResolve(target: string) {
-    try {
-      const res = await fetch(target, {
-        redirect: 'manual',
-        headers: {
-          'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        signal: AbortSignal.timeout(6000),
-      });
-      const location = res.headers.get('location');
-      if (location) {
-        return location.startsWith('http') ? location : new URL(location, 'https://www.facebook.com').toString();
-      }
-    } catch {}
-    return null;
+  const UAS = [
+    'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+  ];
+
+  async function tryResolve(target: string): Promise<string | null> {
+    // Dono User-Agent ek saath (parallel) — jo pehle redirect de wahi lo. Worst case ~5s.
+    const hits = await Promise.all(
+      UAS.map(async (ua) => {
+        try {
+          const res = await fetch(target, {
+            redirect: 'manual',
+            headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+            signal: AbortSignal.timeout(5000),
+          });
+          const location = res.headers.get('location');
+          if (!location) return null;
+          return location.startsWith('http') ? location : new URL(location, 'https://www.facebook.com').toString();
+        } catch {
+          return null;
+        }
+      })
+    );
+    return hits.find(Boolean) ?? null;
   }
 
-  const resolved = await tryResolve(url);
-  return resolved || url;
+  const isValidVideoTarget = (loc: string | null) =>
+    !!loc && (loc.includes('?v=') || loc.includes('/videos/') || loc.includes('/reel/') || loc.includes('story_fbid'));
+
+  const deadline = Date.now() + 9000; // poori resolve 9s se zyada na khinche (route ka limit 30s hai)
+  const initial = await tryResolve(url);
+  if (isValidVideoTarget(initial)) return initial as string;
+
+  // Sirf /share/ links: code ke l/I, 1/l, 0/O jaise dikhne wale akshar galat copy hue hon to variants try karo.
+  const sm = url.match(/^(.*\/share\/(?:[rvp]\/)?)([^/?#]+)(.*)$/i);
+  if (sm) {
+    const [, base, code, rest] = sm;
+    const variants = new Set<string>();
+    if (code.includes('l')) variants.add(code.replace(/l/g, 'I'));
+    if (code.includes('I')) variants.add(code.replace(/I/g, 'l'));
+    if (code.includes('1')) variants.add(code.replace(/1/g, 'l'));
+    if (code.includes('0')) variants.add(code.replace(/0/g, 'O'));
+    for (const v of Array.from(variants).slice(0, 3)) {
+      if (Date.now() > deadline) break;
+      const loc = await tryResolve(base + v + rest);
+      if (isValidVideoTarget(loc)) return loc as string;
+    }
+  }
+  return initial || url;
 }
 
 async function fetchViaNativeFacebook(url: string, id: string) {
@@ -508,7 +549,10 @@ async function fetchViaNativeFacebook(url: string, id: string) {
       };
     }
 
-    if (thumbnail) {
+    // Video/reel link par sirf og:image mile to use "photo" bana ke dena GALAT hai (user ko video ki jagah
+    // thumbnail download hota tha) — tab agle engines (SnapSave, resolvers) ko chance do.
+    const isPhotoLike = /\/photo|\/photos\/|\/posts\/|story\.php|\/permalink/i.test(targetUrl);
+    if (thumbnail && isPhotoLike) {
       return {
         success: true,
         platform: 'facebook' as const,
@@ -553,7 +597,7 @@ async function fetchViaNativeFacebook(url: string, id: string) {
   return null;
 }
 
-async function fetchViaPublicResolver(url: string, shortcode: string, platform: 'instagram' | 'facebook' = 'instagram') {
+export async function fetchViaPublicResolver(url: string, shortcode: string, platform: 'instagram' | 'facebook' = 'instagram') {
   const mirrors = [
     `https://api.vkrdownloader.com/server?vkr=${encodeURIComponent(url)}`,
     `https://backend1.tioo.eu.org/igdl?url=${encodeURIComponent(url)}`,
@@ -628,6 +672,246 @@ async function fetchViaPublicResolver(url: string, shortcode: string, platform: 
   }
   return null;
 }
+
+/* ═══════════════════ SnapSave engine (Instagram + Facebook) ═══════════════════
+ * snapsave.app apna jawab packed JavaScript ("eval(function(h,u,n,t,e,r){…}(…))") mein deta hai.
+ * Dusre project mein ye `new Function()` se chalaya jata tha — yani kisi third-party ka code apne server
+ * par execute hota tha (security risk). Yahan hum packed data ko KHUD decode karte hain, koi remote JS
+ * execute nahi hota. Dono packers (h,u,n,t,e,r  aur  p,a,c,k,e,d) supported hain.
+ * ======================================================================== */
+
+function jsUnescape(body: string): string {
+  return body.replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g, (_m, g: string) => {
+    if (g[0] === 'u' && g.length === 5) return String.fromCharCode(parseInt(g.slice(1), 16));
+    if (g[0] === 'x' && g.length === 3) return String.fromCharCode(parseInt(g.slice(1), 16));
+    if (g === 'n') return '\n';
+    if (g === 'r') return '\r';
+    if (g === 't') return '\t';
+    return g; // \" \' \\ \/ …
+  });
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d)));
+}
+
+/** packer #1:  function(h,u,n,t,e,r)  — n = charset, t = offset, e = base */
+function unpackHunter(h: string, n: string, t: number, e: number): string {
+  let out = '';
+  const delim = n[e];
+  for (let i = 0; i < h.length; i++) {
+    let chunk = '';
+    while (i < h.length && h[i] !== delim) {
+      chunk += h[i];
+      i++;
+    }
+    for (let j = 0; j < n.length; j++) chunk = chunk.split(n[j]).join(String(j));
+    const code = chunk ? parseInt(chunk, e) - t : NaN;
+    if (Number.isFinite(code)) out += String.fromCharCode(code);
+  }
+  // result UTF-8 bytes ko latin1 string ki tarah deta hai → asli text
+  return Buffer.from(out, 'latin1').toString('utf8');
+}
+
+const B62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/** packer #2: Dean Edwards  function(p,a,c,k,e,d) */
+function unpackDean(payload: string, base: number, words: string[]): string {
+  const toIndex = (w: string) => {
+    let v = 0;
+    for (const ch of w) {
+      const d = B62.indexOf(ch);
+      if (d < 0 || d >= base) return -1;
+      v = v * base + d;
+    }
+    return v;
+  };
+  return payload.replace(/\b\w+\b/g, (w) => {
+    const idx = toIndex(w);
+    return idx >= 0 && words[idx] ? words[idx] : w;
+  });
+}
+
+/** Packed eval(...) → plain script text. Plain text ho to jyon ka tyon return. */
+function unpackSnapScript(raw: string): string {
+  let text = raw;
+  for (let round = 0; round < 3; round++) {
+    if (!/eval\s*\(\s*function/.test(text)) break;
+
+    const hunter = [
+      ...text.matchAll(/\}\s*\(\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*\)/g),
+    ].pop();
+    if (hunter) {
+      const next = unpackHunter(hunter[1], hunter[3], Number(hunter[4]), Number(hunter[5]));
+      if (!next) break;
+      text = next;
+      continue;
+    }
+
+    const dean = text.match(
+      /\}\s*\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'((?:[^'\\]|\\.)*)'\s*\.split\(\s*'\|'\s*\)/
+    );
+    if (dean) {
+      const payload = dean[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+      const base = Number(dean[2]);
+      if (base < 2 || base > 62) break;
+      text = unpackDean(payload, base, dean[4].split('|'));
+      continue;
+    }
+    break;
+  }
+  return text;
+}
+
+/** Script se `….innerHTML = "<html>"` ka HTML nikalo (sabse lamba match). Script na ho to raw hi HTML maan lo. */
+function snapHtmlFromResponse(raw: string): string {
+  const script = unpackSnapScript(raw);
+  let best = '';
+  const re = /innerHTML\s*=\s*(["'])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(script))) {
+    const quote = m[1];
+    let i = re.lastIndex;
+    let body = '';
+    while (i < script.length) {
+      const ch = script[i];
+      if (ch === '\\') {
+        body += ch + (script[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === quote) break;
+      body += ch;
+      i++;
+    }
+    const html = jsUnescape(body);
+    if (html.length > best.length) best = html;
+  }
+  return best || script;
+}
+
+type SnapMedia = {
+  type: 'video' | 'image';
+  url: string;
+  thumbnail: string;
+  filename: string;
+  qualities?: { label: string; url: string }[];
+};
+
+function tagAttr(tag: string, name: string): string {
+  const m = tag.match(new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
+  return decodeHtmlEntities((m?.[1] ?? m?.[2] ?? '').trim());
+}
+
+const stripTags = (s: string) => decodeHtmlEntities(s.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+function isUsableSnapLink(href: string): boolean {
+  return /^https?:\/\//i.test(href) && !/google\.com|snapsave\.app|javascript:/i.test(href);
+}
+
+/** SnapSave ke result-HTML se media list. (cheerio ke bina, regex se.) */
+function parseSnapHtml(html: string, prefix: string, id: string): { media: SnapMedia[]; caption: string } {
+  const media: SnapMedia[] = [];
+  const seen = new Set<string>();
+  const firstImg = tagAttr(html.match(/<img\b[^>]*>/i)?.[0] ?? '', 'src');
+  const push = (m: Omit<SnapMedia, 'filename'>) => {
+    if (seen.has(m.url)) return;
+    seen.add(m.url);
+    media.push({ ...m, filename: `${prefix}_${id}_${media.length + 1}.${m.type === 'video' ? 'mp4' : 'jpg'}` });
+  };
+
+  // 1) Instagram style: <div class="download-items"> thumb + button
+  const blocks = html.split(/<div\b[^>]*class=["'][^"']*\bdownload-items\b[^"']*["'][^>]*>/i).slice(1);
+  for (const block of blocks) {
+    const thumb = tagAttr(block.match(/<img\b[^>]*>/i)?.[0] ?? '', 'src');
+    const anchors = [...block.matchAll(/<a\b[^>]*>/gi)].map((a) => tagAttr(a[0], 'href')).filter(isUsableSnapLink);
+    const href = anchors[0];
+    const isVideo = /icon-dlvideo/i.test(block) || (!!href && /\.mp4/i.test(href)) || /download\s*video/i.test(stripTags(block));
+    const url = href || thumb;
+    if (url) push({ type: isVideo ? 'video' : 'image', url, thumbnail: thumb || url });
+  }
+
+  // 2) Facebook style: <table> rows → ek video, alag-alag quality (HD/SD)
+  if (!media.length && /<table\b/i.test(html)) {
+    const qualities: { label: string; url: string }[] = [];
+    for (const row of html.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
+      const cells = [...row[0].matchAll(/<td\b[\s\S]*?<\/td>/gi)].map((c) => c[0]);
+      if (!cells.length) continue;
+      const link = [...row[0].matchAll(/<a\b[^>]*>/gi)].map((a) => tagAttr(a[0], 'href')).find(isUsableSnapLink);
+      if (!link) continue;
+      qualities.push({ label: stripTags(cells[0]) || 'HD', url: link });
+    }
+    if (qualities.length) {
+      push({ type: 'video', url: qualities[0].url, thumbnail: firstImg || qualities[0].url, qualities });
+    }
+  }
+
+  // 3) Generic: koi bhi download / rapidcdn / button link
+  if (!media.length) {
+    for (const a of html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)) {
+      const href = tagAttr(a[0], 'href');
+      if (!isUsableSnapLink(href)) continue;
+      const cls = tagAttr(a[0], 'class');
+      if (!/rapidcdn|download/i.test(href) && !/\bbutton\b/i.test(cls)) continue;
+      const isVideo = /\.mp4/i.test(href) || /video/i.test(stripTags(a[1]));
+      push({ type: isVideo ? 'video' : 'image', url: href, thumbnail: firstImg || href });
+    }
+  }
+
+  const caption = stripTags(html.match(/<span\b[^>]*class=["'][^"']*video-des[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] ?? '');
+  return { media, caption };
+}
+
+export async function fetchViaSnapSave(url: string, shortcode: string, platform: 'instagram' | 'facebook' = 'instagram') {
+  try {
+    const res = await fetch('https://snapsave.app/action.php?lang=en', {
+      method: 'POST',
+      headers: {
+        Accept: '*/*',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: 'https://snapsave.app',
+        Referer: 'https://snapsave.app/',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+      body: new URLSearchParams({ url }).toString(),
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const raw = await res.text();
+    if (!raw || /Unable to connect/i.test(raw)) return null;
+
+    const prefix = platform === 'facebook' ? 'facebook' : 'grabflow';
+    const { media, caption } = parseSnapHtml(snapHtmlFromResponse(raw), prefix, shortcode);
+    if (!media.length) return null;
+
+    return {
+      success: true,
+      platform,
+      engine: 'snapsave',
+      shortcode,
+      id: shortcode,
+      url,
+      type: media.length > 1 ? ('carousel' as const) : media[0].type,
+      author: { username: `${platform}_creator`, fullName: '', avatar: null as string | null },
+      caption,
+      media,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Sirf tests ke liye (lib/snapsave.test.ts) — production code isse use nahi karta. */
+export const __snapsaveInternals = { unpackSnapScript, snapHtmlFromResponse, parseSnapHtml, unpackHunter, unpackDean };
 
 async function fetchViaCobalt(
   url: string,
@@ -731,6 +1015,7 @@ export async function extractInstagramMedia(inputUrl: string, options: any = {})
   }
 
   const engines = [
+    fetchViaSnapSave(canonicalUrl, shortcode, 'instagram'),
     fetchViaInstagramEmbed(shortcode),
     fetchViaPublicResolver(canonicalUrl, shortcode, 'instagram'),
   ];
@@ -767,7 +1052,7 @@ export async function extractFacebookMedia(inputUrl: string, options: any = {}) 
     }
   } catch {}
 
-  const engines = [fetchViaPublicResolver(canonicalUrl, id, 'facebook')];
+  const engines = [fetchViaSnapSave(canonicalUrl, id, 'facebook'), fetchViaPublicResolver(canonicalUrl, id, 'facebook')];
   if (cobaltInstance) {
     engines.push(fetchViaCobalt(canonicalUrl, id, cobaltInstance, cobaltApiKey, 'facebook'));
   }
@@ -1094,7 +1379,10 @@ function legacyToCore(r: Any): ExtractResult | null {
       thumbnail: m.thumbnail || m.url,
       width: m.width,
       height: m.height,
-      qualities: [{ label: m.type === 'video' ? 'HD' : 'Original', url: m.url }],
+      qualities:
+        Array.isArray(m.qualities) && m.qualities.length
+          ? m.qualities
+          : [{ label: m.type === 'video' ? 'HD' : 'Original', url: m.url }],
     }));
   return buildResult(r.shortcode, r.engine || 'legacy', media, {
     caption: r.caption || '',
@@ -1259,6 +1547,7 @@ export async function extract(inputUrl: string, opts: RequestOptions = {}): Prom
   const cobaltInstance = opts.cobaltInstance || process.env.COBALT_INSTANCE || null;
   const cobaltApiKey = process.env.COBALT_API_KEY || null;
   const last = await firstSuccess<ExtractResult>([
+    safe(fetchViaSnapSave(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
     safe(fetchViaInstagramEmbed(shortcode).then(legacyToCore)),
     safe(fetchViaPublicResolver(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
     cobaltInstance
