@@ -1,0 +1,4 @@
+# InstaGrab ads.txt
+# Adsterra / Monetag are tag-based and do not require ads.txt entries.
+# When AdSense is approved for the /blog section, add:
+# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
