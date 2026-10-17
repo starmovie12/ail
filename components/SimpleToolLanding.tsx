@@ -1,5 +1,4 @@
-import Nav from "./Nav";
-import Footer from "./Footer";
+import LegalFoot from "@/components/LegalFoot";
 import FAQ from "./FAQ";
 import Reveal from "./Reveal";
 import JsonLd from "./JsonLd";
@@ -24,9 +23,8 @@ export default function SimpleToolLanding({
   return (
     <>
       <JsonLd data={faqJsonLd(faq ?? DEFAULT_FAQ)} />
-      <Nav />
       <main>
-        <section style={{ position: "relative", padding: "88px 0 56px", textAlign: "center", overflow: "hidden" }}>
+        <section style={{ position: "relative", padding: "20px 0 48px", textAlign: "center", overflow: "hidden" }}>
           <div aria-hidden="true" style={{
             position: "absolute", top: "-25%", left: "50%", transform: "translateX(-50%)",
             width: 800, height: 500, pointerEvents: "none",
@@ -54,7 +52,7 @@ export default function SimpleToolLanding({
 
         <FAQ items={faq} />
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
