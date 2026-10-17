@@ -1,8 +1,7 @@
+import LegalFoot from "@/components/LegalFoot";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 import AdBanner300 from "@/components/AdBanner300";
 import { BLOG_POSTS, getPost } from "@/lib/blog-posts";
 
@@ -30,8 +29,7 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <>
-      <Nav />
-      <main className="container" style={{ padding: "80px 24px 96px", maxWidth: 780 }}>
+      <main className="container" style={{ padding: "24px 24px 48px", maxWidth: 780 }}>
         <p className="label intro-rise" style={{ color: "var(--gold-ink)" }}>Blog</p>
         <h1 className="intro-rise" style={{ fontSize: "var(--t-h2)", marginTop: 16, ["--dl" as string]: "100ms" }}>
           {post.title}
@@ -65,7 +63,7 @@ export default async function BlogPostPage({ params }: Props) {
           </p>
         </div>
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
