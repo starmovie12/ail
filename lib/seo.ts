@@ -39,3 +39,19 @@ export function webAppJsonLd() {
       "Free Instagram downloader for reels, photos, stories and carousels in HD — plus caption and hashtag extraction. No login required.",
   };
 }
+
+/** schema.org HowTo — /how-to-download (PRD §8). */
+export function howToJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name: "How to download social media in HD with InstaGrab",
+    description: "Copy a public link, paste it in InstaGrab, and save the media — no login needed.",
+    totalTime: "PT1M",
+    step: [
+      { "@type": "HowToStep", position: 1, name: "Copy the link", text: "In the app, tap Share → Copy link on the public post, reel, video or story." },
+      { "@type": "HowToStep", position: 2, name: "Paste it", text: "Open InstaGrab and tap Paste Link — or paste into the box and press Grab Media. The right app page opens by itself." },
+      { "@type": "HowToStep", position: 3, name: "Download", text: "The media is fetched automatically. Tap Download to save it in original quality." },
+    ],
+  };
+}
