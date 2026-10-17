@@ -8,6 +8,8 @@ import PwaRegister from "@/components/PwaRegister";
 import InstallPrompt from "@/components/InstallPrompt";
 import CommandPalette from "@/components/CommandPalette";
 import OnboardingTour from "@/components/OnboardingTour";
+import SplashScreen from "@/components/SplashScreen";
+import { SPLASH_GUARD_SCRIPT } from "@/components/splashConfig";
 import "./globals.css";
 
 const display = Fraunces({
@@ -56,8 +58,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){try{var t=localStorage.getItem('ig-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;}catch(e){}})();`,
           }}
         />
+        {/* Splash guard — pehle paint se pehle decide karta hai splash dikhana hai ya nahi */}
+        <script dangerouslySetInnerHTML={{ __html: SPLASH_GUARD_SCRIPT }} />
       </head>
       <body>
+        {/* App open hone par dikhne wali OmniGrab splash screen */}
+        <SplashScreen />
         {/* Slow banner-style colour flow — fixed, behind everything, decorative only */}
         <div className="ambient-glow" aria-hidden="true">
           <span className="ambient-glow__blob ambient-glow__blob--a" />
