@@ -1,0 +1,157 @@
+/* ==========================================================================
+   INSTAGRAB — SINGLE SOURCE OF TRUTH FOR COLOR
+   Palette is taken from the hero banner (components/HeroBanner.tsx):
+   cyan → sky → violet → magenta (+ rare pink) on a deep navy/indigo base.
+   Nothing else in the app should hard-code an accent color — use these tokens.
+   Legacy names (--gold-*, --molten, --brand-*, --text-*, --bg-card …) are kept
+   as ALIASES so the ~98 inner pages keep working. They are no longer gold.
+   ========================================================================== */
+:root {
+  /* ── Core palette (theme independent) ── */
+  --c-cyan:     #22E4FF;
+  --c-sky:      #38BDF8;
+  --c-violet:   #7C3AED;
+  --c-violet-2: #6366F1;   /* lighter violet step: gradient mid / text-safe */
+  --c-magenta:  #D946EF;
+  --c-pink:     #EC4899;   /* use sparingly */
+
+  /* Channel triplets → rgb(var(--c-cyan-rgb) / .3) for translucent tints */
+  --c-cyan-rgb:     34 228 255;
+  --c-sky-rgb:      56 189 248;
+  --c-violet-rgb:   124 58 237;
+  --c-violet-2-rgb: 99 102 241;
+  --c-magenta-rgb:  217 70 239;
+  --c-pink-rgb:     236 72 153;
+
+  /* Brand gradients (same 135° direction as before) */
+  --gradient-brand:   linear-gradient(135deg, var(--c-cyan) 0%, var(--c-violet-2) 55%, var(--c-magenta) 100%);
+  /* Button fill: lighter mid-stops so dark label text keeps AA contrast */
+  --gradient-button:  linear-gradient(135deg, var(--c-cyan) 0%, var(--c-sky) 34%, #818CF8 68%, #C77DF7 100%);
+  --gradient-button-hover: linear-gradient(135deg, #5CEBFF 0%, #6FCBFA 34%, #9AA3FA 68%, #D69AF9 100%);
+  --gradient-glow:    linear-gradient(135deg,
+    rgb(var(--c-cyan-rgb) / .20) 0%, rgb(var(--c-violet-2-rgb) / .22) 55%, rgb(var(--c-magenta-rgb) / .20) 100%);
+  --molten: var(--gradient-button);
+  --on-accent: #050B24;   /* dark label colour on cyan/violet gradient fills (both themes) */
+
+  /* Type scale */
+  --t-hero:  clamp(2.85rem, 1.1rem + 6.6vw, 5.5rem);
+  --t-h2:    clamp(1.95rem, 1.2rem + 2.6vw, 3.15rem);
+  --t-h3:    clamp(1.3rem, 1.15rem + .8vw, 1.65rem);
+  --t-lead:  clamp(1.06rem, 1rem + .45vw, 1.2rem);
+  --t-body:  1.03rem;
+  --t-small: .9rem;
+  --t-label: .72rem;
+}
+
+/* ── DARK (default): deep navy / indigo with a hint of violet ── */
+:root,
+[data-theme="dark"] {
+  --bg:        #050B24;
+  --bg-dark:   #050B24;
+  --surface:   #0B1230;
+  --surface-2: #101842;
+  --surface-3: #1A2254;
+  --bg-card:        #0B1230;
+  --bg-card-hover:  #111A42;
+  --bg-surface: rgba(11, 18, 48, .78);
+  --bg-glass:   rgba(16, 24, 66, .62);
+
+  --ink:   #F1F5FF;
+  --ink-2: #A9B4D6;
+  --ink-3: #7F8CB6;
+  --text-main:  var(--ink);
+  --text-muted: var(--ink-2);
+  --text-dim:   var(--ink-3);
+
+  --line:         rgba(190, 205, 255, .10);
+  --line-strong:  rgb(var(--c-cyan-rgb) / .30);
+  --border-color: rgba(190, 205, 255, .11);
+  --border-focus: rgb(var(--c-cyan-rgb) / .60);
+  --border-glow:  rgb(var(--c-violet-2-rgb) / .45);
+
+  /* Legacy "gold" names → palette (they read as: 400 = primary accent) */
+  --gold-100: #E0F7FF;
+  --gold-200: #A5F3FC;
+  --gold-300: var(--c-sky);
+  --gold-400: var(--c-cyan);
+  --gold-500: var(--c-violet-2);
+  --gold-600: #4F46E5;
+  --gold-700: #3730A3;
+  --gold-ink: var(--c-cyan);          /* accent TEXT on dark surfaces */
+
+  --brand-cyan:   var(--c-cyan);
+  --brand-violet: var(--c-violet-2);
+  --brand-purple: var(--c-magenta);
+  --brand-pink:   var(--c-pink);
+  --brand-grab:   var(--c-sky);
+  --brand-amber:  var(--warn);        /* semantic only */
+
+  --ok: #34D399;  --err: #F87171;  --warn: #FBBF24;
+  --grain: .025;
+  --focus-ring: 0 0 0 3px rgb(var(--c-cyan-rgb) / .38);
+
+  --shadow-1: 0 0 0 1px var(--line-strong), 0 16px 48px -16px rgba(0,0,0,.6);
+  --shadow-2: 0 0 0 1px var(--line-strong), 0 16px 48px -16px rgba(0,0,0,.6);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, .35);
+  --shadow-md: 0 12px 36px rgba(0, 0, 0, .55);
+  --shadow-glow: 0 0 35px rgb(var(--c-cyan-rgb) / .18), 0 0 70px rgb(var(--c-violet-2-rgb) / .20);
+
+  /* Ambient background layer */
+  --amb-a: rgb(var(--c-cyan-rgb) / .20);
+  --amb-b: rgb(var(--c-violet-rgb) / .32);
+  --amb-c: rgb(var(--c-magenta-rgb) / .20);
+  --amb-d: rgb(var(--c-sky-rgb) / .16);
+}
+
+/* ── LIGHT: cool white / lavender surfaces, indigo accent text ── */
+[data-theme="light"] {
+  --bg:        #F4F6FF;
+  --bg-dark:   #F4F6FF;
+  --surface:   #FFFFFF;
+  --surface-2: #EEF1FF;
+  --surface-3: #E1E6FB;
+  --bg-card:        #FFFFFF;
+  --bg-card-hover:  #EEF1FF;
+  --bg-surface: rgba(255, 255, 255, .90);
+  --bg-glass:   rgba(255, 255, 255, .85);
+
+  --ink:   #0B1030;
+  --ink-2: #414C78;
+  --ink-3: #5A6591;
+  --text-main:  var(--ink);
+  --text-muted: var(--ink-2);
+  --text-dim:   var(--ink-3);
+
+  --line:         rgba(40, 50, 130, .12);
+  --line-strong:  rgb(var(--c-violet-2-rgb) / .32);
+  --border-color: rgba(40, 50, 130, .13);
+  --border-focus: rgb(var(--c-violet-2-rgb) / .60);
+  --border-glow:  rgb(var(--c-violet-2-rgb) / .35);
+
+  --gold-100: #EEF9FF;
+  --gold-200: #BAE6FD;
+  --gold-300: #0EA5E9;
+  --gold-400: #0891B2;                /* darker cyan — legible on white */
+  --gold-500: #4F46E5;
+  --gold-600: #4338CA;
+  --gold-700: #3730A3;
+  --gold-ink: #4F46E5;                /* accent TEXT on light surfaces */
+
+  /* text-safe brand gradient on light surfaces (darker cyan / magenta ends) */
+  --gradient-brand: linear-gradient(135deg, #0891B2 0%, var(--c-violet-2) 55%, color-mix(in srgb, var(--c-magenta) 78%, #000) 100%);
+
+  --ok: #047857;  --err: #B91C1C;  --warn: #B45309;
+  --grain: .02;
+  --focus-ring: 0 0 0 3px rgb(var(--c-violet-2-rgb) / .35);
+
+  --shadow-1: 0 1px 2px rgba(20, 28, 90, .06), 0 8px 24px -12px rgba(20, 28, 90, .14);
+  --shadow-2: 0 24px 48px -24px rgba(20, 28, 90, .20);
+  --shadow-sm: 0 4px 14px rgba(20, 28, 90, .10);
+  --shadow-md: 0 12px 36px rgba(20, 28, 90, .14);
+  --shadow-glow: 0 0 35px rgb(var(--c-violet-2-rgb) / .14), 0 0 70px rgb(var(--c-cyan-rgb) / .10);
+
+  --amb-a: rgb(var(--c-cyan-rgb) / .10);
+  --amb-b: rgb(var(--c-violet-2-rgb) / .10);
+  --amb-c: rgb(var(--c-magenta-rgb) / .07);
+  --amb-d: rgb(var(--c-sky-rgb) / .09);
+}
