@@ -39,7 +39,7 @@ export default function InstallPrompt() {
   if (!open || !evt) return null;
   return (
     <div onClick={dismiss} role="dialog" aria-modal="true" style={{
-      position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center",
+      position: "fixed", inset: 0, zIndex: 135, display: "flex", alignItems: "center", justifyContent: "center",
       padding: 20, background: "rgba(10,9,6,.55)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
       animation: "fadeIn 240ms var(--ease-silk)",
     }}>
