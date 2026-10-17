@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import SimpleToolLanding from "@/components/SimpleToolLanding";
-import TwitterDownloader from "@/components/TwitterDownloader";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Twitter / X Video Downloader — HD MP4, Free | InstaGrab",
@@ -11,11 +10,10 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <SimpleToolLanding
+    <PlatformPage platform="x" self="/twitter-downloader"
       eyebrow="Twitter / X downloader"
       h1={<>Tweets you can actually <em className="gilded">keep</em>.</>}
       lead="Paste any tweet link — videos at the highest bitrate, GIFs as MP4, photos at original resolution, text included."
-      tool={<TwitterDownloader />}
       faq={[
         { q: "Which links work?", a: "Any public tweet URL from twitter.com or x.com (…/status/…). Videos, GIFs and multi-photo tweets all work; text-only tweets have nothing to download." },
         { q: "What quality do I get?", a: "Videos: the highest-bitrate MP4 Twitter serves (the same file the player streams). Photos: the ?name=orig original — larger than what the timeline shows." },
@@ -27,6 +25,6 @@ export default function Page() {
       <p>X has no download button for videos and serves compressed previews of photos. This tool pulls the tweet through the public embed system — the same data that powers embedded tweets on news sites — and hands you the best files it has.</p>
       <h2>Text included, obviously</h2>
       <p>Like our Instagram tools, the download comes with the words: the full tweet text with a copy button, because the joke/take/thread-starter is usually the part you wanted to keep.</p>
-    </SimpleToolLanding>
+    </PlatformPage>
   );
 }
