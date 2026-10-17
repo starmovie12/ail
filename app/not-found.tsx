@@ -1,12 +1,10 @@
+import LegalFoot from "@/components/LegalFoot";
 import Link from "next/link";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 
 export default function NotFound() {
   return (
     <>
-      <Nav />
-      <main className="container" style={{ padding: "120px 24px 140px", textAlign: "center", maxWidth: 640 }}>
+      <main className="container" style={{ padding: "56px 24px 64px", textAlign: "center", maxWidth: 640 }}>
         <p className="label intro-rise" style={{ color: "var(--gold-ink)" }}>404</p>
         <h1 className="intro-rise" style={{ fontSize: "var(--t-h2)", marginTop: 16, ["--dl" as string]: "100ms" }}>
           This page doesn&apos;t <em className="gilded">exist</em>.
@@ -20,7 +18,7 @@ export default function NotFound() {
           </Link>
         </div>
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
