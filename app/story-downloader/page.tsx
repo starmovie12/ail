@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ToolLanding from "@/components/ToolLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Story Downloader — Save Before They Vanish | InstaGrab",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <ToolLanding
+    <PlatformPage platform="instagram" pill="story" self="/story-downloader"
       eyebrow="Story downloader"
       h1={<>Story downloader — saved <em className="gilded">before they vanish</em>.</>}
       lead="Public stories disappear in 24 hours. Save them as video or photo, anonymously."
@@ -27,6 +27,6 @@ export default function Page() {
       <p>Because we fetch the story without any Instagram account, <strong>no view notification</strong> is ever sent. The uploader&apos;s view list never shows you.</p>
       <h2>The 24-hour rule</h2>
       <p>Stories expire exactly 24 hours after posting. If you get an &ldquo;expired&rdquo; message, the content is genuinely gone from Instagram&apos;s servers — save early.</p>
-    </ToolLanding>
+    </PlatformPage>
   );
 }
