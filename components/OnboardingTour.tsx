@@ -9,7 +9,7 @@ const STEPS = [
   {
     Icon: Link2,
     title: "One bar, everything",
-    body: "Paste any Instagram link — reel, photo, story — or just a @username. The golden bar figures out the rest.",
+    body: "Paste a link from Instagram, Facebook, TikTok, Pinterest, X or Threads — or just a @username. The box figures out the app and opens the right page.",
   },
   {
     Icon: Sparkles,
@@ -19,7 +19,7 @@ const STEPS = [
   {
     Icon: Search,
     title: "80+ tools, one shortcut",
-    body: "Press Ctrl+K (or the gold button, bottom-right) to jump to any tool in a second. Your recent tools stay on top.",
+    body: "Open the Tools tab to search all of them, or press Ctrl+K on desktop. Your recent tools stay on top.",
   },
 ];
 
@@ -48,7 +48,7 @@ export default function OnboardingTour() {
 
   return (
     <div onClick={finish} role="dialog" aria-modal="true" aria-label="Welcome tour"
-      style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(10,9,6,.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      style={{ position: "fixed", inset: 0, zIndex: 131, background: "rgba(10,9,6,.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} className="card intro-rise"
         style={{ width: "100%", maxWidth: 400, padding: 28, textAlign: "center", position: "relative" }}>
         <button className="btn-icon" onClick={finish} aria-label="Skip tour"
