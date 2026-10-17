@@ -5,6 +5,7 @@ import {
   extractHighlightItems,
   ExtractError,
   parseInstagramUrl,
+  type RequestOptions,
 } from "@/lib/instagram-extractor";
 import {
   coreToUi,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/extract-ui";
 import { isRateLimited } from "@/lib/rate-limit";
 import { getLiveConfig } from "@/lib/runtime-config";
+import { validateCobaltInstance } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -633,7 +635,7 @@ function errorJson(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-async function resolve(raw: string): Promise<UnifiedExtractResponse> {
+async function resolve(raw: string, opts: RequestOptions = {}): Promise<UnifiedExtractResponse> {
   const input = normalizeInput(raw);
   if (!input) {
     throw new ExtractError("Please paste a valid Instagram, Facebook, YouTube, X, TikTok, Pinterest or Threads link.", "INVALID_URL");
@@ -647,10 +649,10 @@ async function resolve(raw: string): Promise<UnifiedExtractResponse> {
         if (st[1].toLowerCase() === "highlights") {
           const id = input.url.match(/stories\/highlights\/(\d+)/i)?.[1];
           if (!id) throw new ExtractError("Invalid highlight link.", "INVALID_URL");
-          const items = await extractHighlightItems(id);
+          const items = await extractHighlightItems(id, opts);
           return toUnifiedPayload(storyItemsToUi(items, "instagram", id), "instagram", input.url);
         }
-        const { username, items } = await extractStories(st[1]);
+        const { username, items } = await extractStories(st[1], opts);
         const wanted = st[2] ? items.filter((i) => i.id === st[2]) : [];
         return toUnifiedPayload(
           storyItemsToUi(wanted.length ? wanted : items, username, st[2] || username),
@@ -659,12 +661,12 @@ async function resolve(raw: string): Promise<UnifiedExtractResponse> {
         );
       }
 
-      const core = await extract(input.url);
+      const core = await extract(input.url, opts);
       const canonical = parseInstagramUrl(input.url)?.canonicalUrl ?? input.url;
       return toUnifiedPayload(coreToUi(core), "instagram", canonical, null, core.fullName ?? "");
     }
     case "facebook":
-      return extractFacebook(input.url);
+      return extractFacebook(input.url, opts.cobaltInstance ?? undefined);
     default:
       return extractOtherPlatform(input.url, input.platform);
   }
@@ -677,16 +679,24 @@ export async function POST(req: NextRequest) {
   }
 
   let url = "";
+  let sessionId: string | null = null;
+  let cobaltRaw: unknown = null;
   try {
     const body = await req.json();
     url = String(body?.url ?? "");
+    // Session ID sirf POST body se (URL/query me kabhi nahi), kabhi log/store/echo nahi hota.
+    if (typeof body?.sessionId === "string" && body.sessionId.length <= 600) sessionId = body.sessionId;
+    cobaltRaw = body?.cobaltInstance;
   } catch {
     return errorJson("INVALID_URL", "Invalid request body.", 400);
   }
   if (!url.trim()) return errorJson("INVALID_URL", "Paste a link first.", 400);
 
+  // Cobalt URL: SSRF-safe ya chupchap ignore (server default COBALT_INSTANCE chalega)
+  const cobaltInstance = cobaltRaw ? await validateCobaltInstance(cobaltRaw) : null;
+
   try {
-    const data = await resolve(url);
+    const data = await resolve(url, { sessionId, cobaltInstance });
     return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (err instanceof ExtractError) {
