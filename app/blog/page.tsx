@@ -1,7 +1,6 @@
+import LegalFoot from "@/components/LegalFoot";
 import type { Metadata } from "next";
 import Link from "next/link";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
 import Reveal from "@/components/Reveal";
 import { BLOG_POSTS } from "@/lib/blog-posts";
 
@@ -15,8 +14,7 @@ export const metadata: Metadata = {
 export default function BlogPage() {
   return (
     <>
-      <Nav />
-      <main className="container" style={{ padding: "80px 24px 96px", maxWidth: 780 }}>
+      <main className="container" style={{ padding: "24px 24px 48px", maxWidth: 780 }}>
         <p className="label intro-rise" style={{ color: "var(--gold-ink)" }}>Blog</p>
         <h1 className="intro-rise" style={{ fontSize: "var(--t-h2)", marginTop: 16, ["--dl" as string]: "100ms" }}>
           Notes for <em className="gilded">creators</em>.
@@ -43,7 +41,7 @@ export default function BlogPage() {
           ))}
         </div>
       </main>
-      <Footer />
+      <LegalFoot />
     </>
   );
 }
