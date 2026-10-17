@@ -1,146 +1,72 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Download, Loader2, Check, ArrowLeft, AlertTriangle, Music, ImageDown } from "lucide-react";
-import type { ExtractResult } from "@/lib/extract-ui";
-import { dl } from "@/lib/media";
+/**
+ * Quick Action — PWA share-target (/quick-action) + browser extension (PRD A21, §10.10).
+ * Pehle sirf Instagram regex tha; ab shared text `resolveRoute()` se guzarta hai → sahi app page par handoff.
+ */
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2, Link2, ArrowRight } from "lucide-react";
+import { resolveRoute, type Route } from "@/lib/router";
+import { setHandoff } from "@/lib/storage";
 
-const IG_URL_RE = /https?:\/\/(?:www\.)?instagram\.com\/[^\s]+/i;
-
-/** Pull the first Instagram URL out of whatever the share sheet handed us
- *  (Instagram usually drops the link into `text`, sometimes `url`). */
-function extractLink(params: URLSearchParams): string | null {
-  for (const key of ["url", "text", "title"]) {
-    const v = params.get(key);
-    if (!v) continue;
-    if (IG_URL_RE.test(v)) return v.match(IG_URL_RE)![0];
-    if (key === "url" && /instagram\.com/i.test(v)) return v.trim();
+function openRoute(route: Route, router: ReturnType<typeof useRouter>): boolean {
+  if (route.type === "app") {
+    const qs = new URLSearchParams({ src: "home" });
+    if (route.kind) qs.set("kind", route.kind);
+    if (!setHandoff({ url: route.url, kind: route.kind, src: "home" })) qs.set("url", route.url);
+    router.replace(`${route.path}?${qs.toString()}`);
+    return true;
   }
-  return null;
+  if (route.type === "batch") {
+    const ok = setHandoff({ url: route.urls.join("\n"), kind: "batch", src: "home" });
+    router.replace(ok ? "/batch-downloader?src=home" : `/batch-downloader?src=home&url=${encodeURIComponent(route.urls.join("\n"))}`);
+    return true;
+  }
+  if (route.type === "soon") { router.replace(`/coming-soon/${route.platform}`); return true; }
+  return false;
 }
-
-type Phase = "idle" | "loading" | "done" | "error";
 
 export default function QuickAction() {
   const params = useSearchParams();
-  const link = useMemo(() => extractLink(new URLSearchParams(params.toString())), [params]);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [result, setResult] = useState<ExtractResult | null>(null);
+  const router = useRouter();
   const [manual, setManual] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(true);
 
-  async function run(url: string) {
-    setPhase("loading"); setResult(null);
-    try {
-      const res = await fetch("/api/extract", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || json?.error) { setPhase("error"); return; }
-      setResult(json.data as ExtractResult); setPhase("done");
-    } catch { setPhase("error"); }
-  }
+  useEffect(() => {
+    // Share sheet link `text`, `url` ya `title` me aata hai
+    const shared = ["url", "text", "title"].map((k) => params.get(k) ?? "").filter(Boolean).join("\n");
+    if (shared) {
+      const route = resolveRoute(shared, { allowBareUsername: false });
+      if (openRoute(route, router)) return;
+      setMsg("Ye link abhi supported nahi — neeche sahi link paste karein.");
+    }
+    setBusy(false);
+  }, [params, router]);
 
-  useEffect(() => { if (link) run(link); }, [link]);
-
-  const main = result?.slides?.[0];
-  const best = main?.versions?.[0];
-
-  function backToInstagram() {
-    if (window.history.length > 1) window.history.back();
-    else window.location.href = "https://www.instagram.com/";
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const route = resolveRoute(manual, { allowBareUsername: true });
+    if (!openRoute(route, router)) setMsg(route.type === "empty" ? "Link ya @username daalein" : "Ye link abhi supported nahi");
   }
 
   return (
-    <div style={{
-      minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-      background: "radial-gradient(1000px 600px at 50% -10%, rgb(var(--c-violet-2-rgb) / .28), transparent 60%), var(--bg)",
-    }}>
-      <div className="qa-glass" style={{ maxWidth: 440, width: "100%", padding: 28, textAlign: "center", color: "var(--ink)" }}>
-        {/* Idle with no link → let them paste */}
-        {phase === "idle" && !link && (
-          <>
-            <h1 style={{ fontSize: 22, marginBottom: 8, color: "#fff" }}>Quick download</h1>
-            <p style={{ color: "rgba(245,239,226,.7)", fontSize: 14, marginBottom: 20 }}>Paste an Instagram link to download instantly.</p>
-            <input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="instagram.com/reel/…"
-              onKeyDown={(e) => e.key === "Enter" && manual && run(manual)}
-              style={{ width: "100%", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 14, padding: "12px 16px", color: "#fff", fontSize: 15, marginBottom: 14 }} />
-            <button className="btn btn-molten" onClick={() => manual && run(manual)} style={{ width: "100%", height: 48 }}>
-              <Download size={18} strokeWidth={1.5} /> Download
-            </button>
-          </>
-        )}
-
-        {phase === "loading" && (
-          <div style={{ padding: "24px 0" }}>
-            <Loader2 size={40} strokeWidth={1.5} className="qa-spin" style={{ color: "var(--gold-200)" }} />
-            <p style={{ marginTop: 18, color: "rgba(245,239,226,.85)", fontSize: 15 }}>Fetching your download…</p>
-          </div>
-        )}
-
-        {phase === "error" && (
-          <div style={{ padding: "12px 0" }}>
-            <AlertTriangle size={36} strokeWidth={1.5} style={{ color: "#E2765A" }} />
-            <p style={{ margin: "16px 0", color: "rgba(245,239,226,.85)", fontSize: 15 }}>
-              Couldn&apos;t fetch that one. It may be private, expired, or Instagram is busy.
-            </p>
-            {link && <button className="btn btn-secondary" onClick={() => run(link)} style={{ height: 46 }}>Try again</button>}
-          </div>
-        )}
-
-        {phase === "done" && main && (
-          <>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--gold-200)", marginBottom: 16 }}>
-              <Check size={18} strokeWidth={2} /> <span className="mono" style={{ fontSize: 13, letterSpacing: ".1em", textTransform: "uppercase" }}>Ready</span>
-            </div>
-            <div style={{ width: 150, aspectRatio: result!.kind === "reel" || result!.kind === "story" ? "9/16" : "1/1", margin: "0 auto 20px", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,.15)" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={dl(main.thumbnail || main.url, "preview")} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {best && (
-                <a className="btn btn-molten" href={dl(best.url, `instagrab-${result!.shortcode}-${best.label.replace(/\W+/g, "")}`)} download style={{ width: "100%", height: 50, fontSize: 16 }}>
-                  <Download size={20} strokeWidth={1.5} /> Download {best.label}
-                </a>
-              )}
-              <div style={{ display: "flex", gap: 10 }}>
-                {main.audioUrl && (
-                  <a className="btn btn-secondary" href={dl(main.audioUrl, `instagrab-${result!.shortcode}-audio.m4a`)} download style={{ flex: 1, height: 44 }}>
-                    <Music size={16} strokeWidth={1.5} /> Audio
-                  </a>
-                )}
-                {result!.thumbnail && (
-                  <a className="btn btn-secondary" href={dl(result!.thumbnail, `instagrab-${result!.shortcode}-thumb.jpg`)} download style={{ flex: 1, height: 44 }}>
-                    <ImageDown size={16} strokeWidth={1.5} /> Cover
-                  </a>
-                )}
-              </div>
-            </div>
-            <button onClick={backToInstagram} className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "rgba(245,239,226,.65)", fontSize: 13, marginTop: 20 }}>
-              <ArrowLeft size={14} strokeWidth={1.5} /> Back to Instagram
-            </button>
-          </>
-        )}
-
-        <a href="/" className="mono" style={{ display: "block", marginTop: 18, color: "var(--ink-2)", fontSize: 12, textDecoration: "none" }}>
-          Open full InstaGrab →
-        </a>
-      </div>
-
-      <style jsx>{`
-        .qa-glass{
-          background: color-mix(in srgb, var(--surface) 72%, transparent);
-          border: 1px solid rgb(var(--c-cyan-rgb) / .22);
-          border-radius: 26px;
-          backdrop-filter: blur(20px) saturate(1.2);
-          -webkit-backdrop-filter: blur(20px) saturate(1.2);
-          box-shadow: 0 30px 80px -20px rgba(0,0,0,.6);
-          animation: qaPop 340ms cubic-bezier(.16,1,.3,1);
-        }
-        .qa-spin{ animation: qaSpin 900ms linear infinite; }
-        @keyframes qaSpin{ to{ transform: rotate(360deg); } }
-        @keyframes qaPop{ from{ opacity:0; transform: translateY(16px) scale(.95); } to{ opacity:1; transform:none; } }
-      `}</style>
+    <div className="container" style={{ maxWidth: 560, padding: "32px var(--gutter)", textAlign: "center" }}>
+      {busy ? (
+        <p style={{ color: "var(--ink-2)", display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 size={18} className="qa-spin" aria-hidden="true" /> Opening…</p>
+      ) : (
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h1 style={{ fontSize: "1.5rem", margin: 0 }}>Quick download</h1>
+          <label className="pd-field" style={{ display: "flex" }}>
+            <Link2 size={20} aria-hidden="true" />
+            <input value={manual} onChange={(e) => { setManual(e.target.value); setMsg(""); }} placeholder="Paste any link…" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+              style={{ flex: 1, minWidth: 0, height: 52, background: "none", border: 0, outline: 0, color: "var(--ink)", fontSize: 16 }} aria-label="Link" />
+          </label>
+          {msg && <p role="alert" style={{ color: "var(--ink-2)", margin: 0, fontSize: 14 }}>{msg}</p>}
+          <button type="submit" className="pd-btn pd-btn--pri">Go <ArrowRight size={18} aria-hidden="true" /></button>
+        </form>
+      )}
+      <style>{`.qa-spin{animation:qaSpin .8s linear infinite}@keyframes qaSpin{to{transform:rotate(360deg)}}.pd-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border-radius:999px;cursor:pointer;font-weight:800;font-size:16px;border:0}.pd-btn--pri{color:var(--on-accent);background:var(--gradient-button)}.pd-field{display:flex;align-items:center;gap:10px;min-height:56px;padding:0 12px 0 16px;border-radius:999px;background:var(--bg-surface);border:1px solid var(--line-strong);color:var(--ink-3)}`}</style>
     </div>
   );
 }
