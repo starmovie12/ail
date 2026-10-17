@@ -1,0 +1,86 @@
+/* ── Motion — Design Bible §8. transform+opacity only. ── */
+:root{
+  --d-1:120ms; --d-2:240ms; --d-3:420ms; --d-4:640ms; --d-5:900ms;
+  --ease-silk:   cubic-bezier(.22, 1,  .36, 1);
+  --ease-velvet: cubic-bezier(.16, 1,  .30, 1);
+  --ease-hinge:  cubic-bezier(.65, 0,  .35, 1);
+  --ease-coin:   cubic-bezier(.34, 1.56,.64, 1);
+}
+
+/* Mask-rise headline entrance */
+.mask{ display:block; overflow:hidden; }
+.mask > span{ display:inline-block; transform:translateY(112%);
+  animation:rise var(--d-4) var(--ease-velvet) forwards;
+  animation-delay:var(--dl,0ms); }
+@keyframes rise{ to{ transform:translateY(0); } }
+
+/* Intro rise+fade for hero children */
+.intro-rise{ opacity:0; transform:translateY(16px);
+  animation:introRise 480ms var(--ease-velvet) forwards;
+  animation-delay:var(--dl,0ms); }
+@keyframes introRise{ to{ opacity:1; transform:none; } }
+
+/* Brand bar ring bloom (once) */
+@keyframes bloom{
+  0%{ box-shadow:0 0 0 0 rgb(var(--c-cyan-rgb) / .35); }
+  100%{ box-shadow:0 0 0 18px rgb(var(--c-cyan-rgb) / 0); }
+}
+.bar-intro{ animation:bloom 900ms var(--ease-silk) 1s 1 both; }
+
+/* Scroll reveals */
+.reveal{ opacity:0; transform:translateY(24px);
+  transition:opacity var(--d-4) var(--ease-velvet), transform var(--d-4) var(--ease-velvet);
+  transition-delay:calc(var(--i,0) * 70ms); }
+.reveal.in{ opacity:1; transform:none; }
+
+/* ★ Golden Thread — loading signature */
+@property --angle{ syntax:'<angle>'; initial-value:0deg; inherits:false; }
+.bar{ position:relative; background:var(--surface);
+  border:1px solid var(--line); border-radius:999px; }
+.bar.loading{ border-color:transparent; }
+.bar.loading::before{
+  content:""; position:absolute; inset:-1.5px; z-index:-1;
+  border-radius:inherit;
+  background:conic-gradient(from var(--angle),
+    transparent 0deg 258deg,
+    var(--c-cyan) 300deg,
+    var(--c-magenta) 330deg,
+    transparent 360deg);
+  animation:thread 1.1s linear infinite;
+}
+@keyframes thread{ to{ --angle:360deg; } }
+@keyframes pulse-border{ 50%{ border-color:var(--gold-400); } }
+
+/* Invalid shake */
+@keyframes shake{ 25%{transform:translateX(-4px)} 50%{transform:translateX(4px)} 75%{transform:translateX(-4px)} }
+.shake{ animation:shake 240ms var(--ease-silk); }
+
+/* Expander (result card / FAQ) */
+.expander{ display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--d-3) var(--ease-hinge); }
+.expander.open{ grid-template-rows:1fr; }
+.expander > div{ overflow:hidden; }
+
+/* Gold tick ring pulse */
+@keyframes tickring{
+  0%{ box-shadow:0 0 0 0 rgb(var(--c-cyan-rgb) / .45); }
+  100%{ box-shadow:0 0 0 14px rgb(var(--c-cyan-rgb) / 0); }
+}
+.tick{ animation:tickring 500ms var(--ease-silk); }
+@keyframes coinpop{ from{ transform:scale(0); } to{ transform:scale(1); } }
+.coin-in{ animation:coinpop 240ms var(--ease-coin); }
+
+/* Hairline draws itself (How it works) */
+.drawline{ transform:scaleX(0); transform-origin:left;
+  transition:transform var(--d-5) var(--ease-velvet); }
+.reveal.in .drawline, .drawline.in{ transform:scaleX(1); }
+
+@media (prefers-reduced-motion: reduce){
+  .mask > span{ animation:none; transform:none; }
+  .intro-rise{ animation:fadeonly 150ms ease forwards; transform:none; }
+  .reveal{ transition:opacity 150ms ease; transform:none; }
+  .bar-intro{ animation:none; }
+  .bar.loading{ border-color:var(--line); animation:pulse-border 1.2s ease infinite; }
+  .bar.loading::before{ display:none; }
+  .shake{ animation:none; }
+  @keyframes fadeonly{ to{ opacity:1; } }
+}
