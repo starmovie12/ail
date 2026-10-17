@@ -1,7 +1,7 @@
 {
   "name": "InstaGrab — Instagram Downloader & Creator Tools",
   "short_name": "InstaGrab",
-  "description": "Download Instagram reels, photos, stories and carousels in HD — plus caption/hashtag extraction and a full creator toolkit. Share a link straight to InstaGrab.",
+  "description": "Download Instagram, Facebook, TikTok, Pinterest, X and Threads media in HD — plus YouTube thumbnails, captions, hashtags and a full creator toolkit. Share a link straight to InstaGrab.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -15,25 +15,19 @@
   ],
   "icons": [
     {
-      "src": "/icon-blank-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-blank-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-maskable-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-maskable-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -48,5 +42,22 @@
       "text": "text",
       "url": "url"
     }
-  }
+  },
+  "shortcuts": [
+    {
+      "name": "Tools",
+      "short_name": "Tools",
+      "url": "/tools?source=shortcut"
+    },
+    {
+      "name": "History",
+      "short_name": "History",
+      "url": "/history?source=shortcut"
+    },
+    {
+      "name": "How to Download",
+      "short_name": "How-to",
+      "url": "/how-to-download?source=shortcut"
+    }
+  ]
 }
