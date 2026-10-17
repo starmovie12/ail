@@ -8,9 +8,9 @@ import PwaRegister from "@/components/PwaRegister";
 import InstallPrompt from "@/components/InstallPrompt";
 import CommandPalette from "@/components/CommandPalette";
 import OnboardingTour from "@/components/OnboardingTour";
-import SplashScreen from "@/components/SplashScreen";
-import { SPLASH_GUARD_SCRIPT } from "@/components/splashConfig";
+import AppShell from "@/components/shell/AppShell";
 import "./globals.css";
+import "./shell.css";
 
 const display = Fraunces({
   subsets: ["latin"], style: ["normal", "italic"],
@@ -42,6 +42,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // notch / home-bar ke liye (PRD §14.2) — env(safe-area-inset-*) shell.css me
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F4F6FF" },
     { media: "(prefers-color-scheme: dark)", color: "#050B24" },
@@ -55,15 +59,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* FOUC-proof theme — runs before paint */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('ig-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('ig-theme')||'dark';document.documentElement.dataset.theme=t;}catch(e){}})();`,
           }}
         />
-        {/* Splash guard — pehle paint se pehle decide karta hai splash dikhana hai ya nahi */}
-        <script dangerouslySetInnerHTML={{ __html: SPLASH_GUARD_SCRIPT }} />
       </head>
       <body>
-        {/* App open hone par dikhne wali OmniGrab splash screen */}
-        <SplashScreen />
         {/* Slow banner-style colour flow — fixed, behind everything, decorative only */}
         <div className="ambient-glow" aria-hidden="true">
           <span className="ambient-glow__blob ambient-glow__blob--a" />
@@ -71,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <span className="ambient-glow__blob ambient-glow__blob--c" />
           <span className="ambient-glow__blob ambient-glow__blob--d" />
         </div>
-        <LangProvider>{children}</LangProvider>
+        <LangProvider><AppShell>{children}</AppShell></LangProvider>
         <PwaRegister />
         <InstallPrompt />
         <CommandPalette />
