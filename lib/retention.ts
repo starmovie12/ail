@@ -37,40 +37,6 @@ export function getRecentTools(): string[] {
   return read(RECENT_KEY);
 }
 
-/* ── Download history (H1) — private, on-device only ── */
-
-export type HistoryItem = {
-  shortcode: string;
-  kind: string;
-  username: string;
-  thumbnail: string;
-  at: number; // ms epoch
-};
-
-const HISTORY_KEY = "ig.downloadHistory";
-const HISTORY_MAX = 60;
-
-export function recordDownload(item: Omit<HistoryItem, "at">) {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const list: HistoryItem[] = raw ? JSON.parse(raw) : [];
-    const next = [{ ...item, at: Date.now() }, ...list.filter((h) => h.shortcode !== item.shortcode)];
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, HISTORY_MAX)));
-  } catch { /* best-effort */ }
-}
-
-export function getDownloadHistory(): HistoryItem[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
-  } catch { return []; }
-}
-
-export function clearDownloadHistory() {
-  try { localStorage.removeItem(HISTORY_KEY); } catch {}
-}
-
 /* ── Recent searches (I10) — chips under the golden bar ── */
 
 const SEARCH_KEY = "ig.recentSearches";
