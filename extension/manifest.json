@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "InstaGrab — Instagram Downloader",
+  "version": "1.0.0",
+  "description": "Right-click any Instagram post, reel or link → Download with InstaGrab. 80+ free Instagram tools.",
+  "permissions": ["contextMenus"],
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open InstaGrab"
+  }
+}
