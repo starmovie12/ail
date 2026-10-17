@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import UsernameLanding from "@/components/UsernameLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Profile Picture Downloader — Full HD DP | InstaGrab",
@@ -10,12 +10,10 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <UsernameLanding
+    <PlatformPage platform="instagram" pill="profile" self="/profile-picture-downloader"
       eyebrow="Profile picture downloader"
       h1={<>Profile pictures — the <em className="gilded">full-size</em> original.</>}
       lead="Instagram shrinks profile photos to a tiny circle. Enter any public username to view and download the HD original."
-      mode="dp"
-      placeholder="Enter @username (e.g. cristiano)…"
       faq={[
         { q: "What size is the downloaded picture?", a: "The full HD original Instagram stores (typically 320–1080px), not the tiny circle shown in the app." },
         { q: "Does it work for private accounts?", a: "Profile pictures of private accounts may be limited. Public accounts always work in full HD." },
@@ -29,6 +27,6 @@ export default function Page() {
       <p>Instagram only ever shows the profile photo as a small circle — there&apos;s no built-in way to open it full-size. We request the original file Instagram stores, so you get the photo at its true resolution.</p>
       <h2>Anonymous by design</h2>
       <p>No login, no follow, no view — the account owner is never notified. We don&apos;t store usernames or any history.</p>
-    </UsernameLanding>
+    </PlatformPage>
   );
 }
