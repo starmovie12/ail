@@ -163,12 +163,13 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   position: absolute;
   left: 50%; top: 57.6%;
   width: 40.5%;
-  /* Hand-off: Android ki system splash ka icon screen ke bilkul beech mein
-     hota hai. Hero wahin se shuru hota hai (--hero-shift) aur apni jagah
-     par aa jaata hai. */
+  /* Android ki system splash ab sirf flat dark colour dikhati hai (manifest ke
+     "any" icons transparent hain). Hero screen ke beech se halke se fade-in
+     hota hai aur apni jagah par aa jaata hai. */
   --hero-shift: calc(114.35cqw - 50dvh);
+  opacity: 0;
   transform: translate(-50%, calc(-50% + var(--hero-shift))) scale(.8);
-  animation: osHeroIn .8s .15s cubic-bezier(.22, .8, .2, 1) forwards;
+  animation: osHeroIn .9s .1s cubic-bezier(.22, .8, .2, 1) forwards;
 }
 .os-hero__ring {
   padding: 2.6cqw;
@@ -375,8 +376,9 @@ html.os-lock, html.os-lock body { overflow: hidden !important; }
   100% { opacity: 1; transform: none; }
 }
 @keyframes osHeroIn {
-  0%   { transform: translate(-50%, calc(-50% + var(--hero-shift))) scale(.8); }
-  100% { transform: translate(-50%, -50%) scale(1); }
+  0%   { opacity: 0; transform: translate(-50%, calc(-50% + var(--hero-shift))) scale(.8); }
+  35%  { opacity: 1; }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 @keyframes osFloat {
   0%, 100% { transform: rotate(var(--rot)) translateY(0); }
