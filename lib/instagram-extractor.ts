@@ -652,6 +652,7 @@ async function fetchViaCobalt(
       headers,
       body: JSON.stringify({ url }),
       signal: AbortSignal.timeout(8000),
+      redirect: 'error', // SSRF: redirect se private host par na jayein
     });
 
     if (!res.ok) return null;
@@ -920,8 +921,8 @@ function firstSuccess<T>(ps: Promise<T | null>[]): Promise<T | null> {
 }
 
 /** Cookie header from INSTAGRAM_SESSION_ID (accepts a bare sessionid or a full cookie string). */
-function sessionCookie(): string | null {
-  const raw = (process.env.INSTAGRAM_SESSION_ID || '').trim();
+function sessionCookie(override?: string | null): string | null {
+  const raw = ((override && override.trim()) || process.env.INSTAGRAM_SESSION_ID || '').trim();
   if (!raw) return null;
   let cookie = raw;
   if (!/sessionid=/i.test(cookie)) cookie = `sessionid=${cookie}`;
@@ -1232,14 +1233,16 @@ async function viaFallbackApi(canonicalUrl: string, shortcode: string, cfg: Cfg)
  * Post / reel / carousel / IGTV → ExtractResult.
  * Throws ExtractError('INVALID_URL' | 'EXTRACTOR_DOWN').
  */
-export async function extract(inputUrl: string): Promise<ExtractResult> {
+export type RequestOptions = { sessionId?: string | null; cobaltInstance?: string | null };
+
+export async function extract(inputUrl: string, opts: RequestOptions = {}): Promise<ExtractResult> {
   const parsed = parseInstagramUrl(inputUrl);
   if (!parsed) {
     throw new ExtractError('Please paste a valid Instagram post, reel or video link.', 'INVALID_URL');
   }
   const { shortcode, canonicalUrl } = parsed;
   const cfg = await getLiveConfig();
-  const cookie = sessionCookie();
+  const cookie = sessionCookie(opts.sessionId);
 
   const direct = () =>
     firstSuccess<ExtractResult>([
@@ -1253,7 +1256,7 @@ export async function extract(inputUrl: string): Promise<ExtractResult> {
     if (r) return r;
   }
 
-  const cobaltInstance = process.env.COBALT_INSTANCE || null;
+  const cobaltInstance = opts.cobaltInstance || process.env.COBALT_INSTANCE || null;
   const cobaltApiKey = process.env.COBALT_API_KEY || null;
   const last = await firstSuccess<ExtractResult>([
     safe(fetchViaInstagramEmbed(shortcode).then(legacyToCore)),
@@ -1284,8 +1287,8 @@ export function normalizeUsername(input: string): string {
   return s.toLowerCase();
 }
 
-async function fetchProfileUser(username: string, cfg: Cfg): Promise<Any> {
-  const cookie = sessionCookie();
+async function fetchProfileUser(username: string, cfg: Cfg, sessionOverride?: string | null): Promise<Any> {
+  const cookie = sessionCookie(sessionOverride);
 
   const direct = async (): Promise<Any | null> => {
     const res = await fetch(cfg.webProfileInfoUrl + encodeURIComponent(username), {
@@ -1349,17 +1352,17 @@ function userToProfile(u: Any, fallbackName: string): ProfileResult {
   };
 }
 
-export async function extractProfile(usernameInput: string): Promise<ProfileResult> {
+export async function extractProfile(usernameInput: string, opts: RequestOptions = {}): Promise<ProfileResult> {
   const username = normalizeUsername(usernameInput);
   const cfg = await getLiveConfig();
-  const user = await fetchProfileUser(username, cfg);
+  const user = await fetchProfileUser(username, cfg, opts.sessionId);
   return userToProfile(user, username);
 }
 
-export async function extractProfileFeed(usernameInput: string): Promise<ProfileFeedResult> {
+export async function extractProfileFeed(usernameInput: string, opts: RequestOptions = {}): Promise<ProfileFeedResult> {
   const username = normalizeUsername(usernameInput);
   const cfg = await getLiveConfig();
-  const user = await fetchProfileUser(username, cfg);
+  const user = await fetchProfileUser(username, cfg, opts.sessionId);
   const profile = userToProfile(user, username);
 
   const tl = user?.edge_owner_to_timeline_media;
@@ -1394,8 +1397,8 @@ export async function extractProfileFeed(usernameInput: string): Promise<Profile
 const SESSION_NEEDED =
   'Stories and highlights need a logged-in Instagram session. The site owner must set INSTAGRAM_SESSION_ID in Vercel.';
 
-async function reelItems(reelId: string): Promise<Any[]> {
-  const cookie = sessionCookie();
+async function reelItems(reelId: string, sessionOverride?: string | null): Promise<Any[]> {
+  const cookie = sessionCookie(sessionOverride);
   if (!cookie) throw new ExtractError(SESSION_NEEDED, 'STORY_UNSUPPORTED');
   const cfg = await getLiveConfig();
   let res: Response;
@@ -1437,25 +1440,25 @@ function mobileItemToStory(it: Any): StoryItem | null {
   };
 }
 
-export async function extractStories(usernameInput: string): Promise<StoriesResult> {
+export async function extractStories(usernameInput: string, opts: RequestOptions = {}): Promise<StoriesResult> {
   const username = normalizeUsername(usernameInput);
-  const profile = await extractProfile(username);
+  const profile = await extractProfile(username, opts);
   if (!profile.userId) {
     throw new ExtractError("Couldn't look up this account's id. Please try again.", 'EXTRACTOR_DOWN');
   }
-  const items = (await reelItems(profile.userId)).map(mobileItemToStory).filter(Boolean) as StoryItem[];
+  const items = (await reelItems(profile.userId, opts.sessionId)).map(mobileItemToStory).filter(Boolean) as StoryItem[];
   if (!items.length) {
     throw new ExtractError('No active stories right now (stories disappear after 24 hours).', 'NO_STORIES');
   }
   return { username: profile.username, items };
 }
 
-export async function extractHighlights(usernameInput: string): Promise<HighlightsResult> {
-  const cookie = sessionCookie();
+export async function extractHighlights(usernameInput: string, opts: RequestOptions = {}): Promise<HighlightsResult> {
+  const cookie = sessionCookie(opts.sessionId);
   if (!cookie) throw new ExtractError(SESSION_NEEDED, 'STORY_UNSUPPORTED');
   const username = normalizeUsername(usernameInput);
   const cfg = await getLiveConfig();
-  const profile = await extractProfile(username);
+  const profile = await extractProfile(username, opts);
   if (!profile.userId) {
     throw new ExtractError("Couldn't look up this account's id. Please try again.", 'EXTRACTOR_DOWN');
   }
@@ -1482,11 +1485,11 @@ export async function extractHighlights(usernameInput: string): Promise<Highligh
   return { username: profile.username, albums };
 }
 
-export async function extractHighlightItems(highlightId: string): Promise<StoryItem[]> {
+export async function extractHighlightItems(highlightId: string, opts: RequestOptions = {}): Promise<StoryItem[]> {
   const raw = String(highlightId ?? '').trim();
   const id = /^highlight:\d+$/.test(raw) ? raw : /^\d+$/.test(raw) ? `highlight:${raw}` : '';
   if (!id) throw new ExtractError('Invalid highlight id.', 'INVALID_URL');
-  const items = (await reelItems(id)).map(mobileItemToStory).filter(Boolean) as StoryItem[];
+  const items = (await reelItems(id, opts.sessionId)).map(mobileItemToStory).filter(Boolean) as StoryItem[];
   if (!items.length) throw new ExtractError('This highlight is empty.', 'NO_STORIES');
   return items;
 }
