@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import UsernameLanding from "@/components/UsernameLanding";
+import PlatformPage from "@/components/PlatformPage";
 
 export const metadata: Metadata = {
   title: "Instagram Highlights Downloader — Covers & Stories | InstaGrab",
@@ -10,12 +10,10 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <UsernameLanding
+    <PlatformPage platform="instagram" pill="highlights" self="/highlights-downloader"
       eyebrow="Highlights downloader"
       h1={<>Highlights — whole collections, <em className="gilded">saved</em>.</>}
       lead="Covers plus the stories inside each highlight album, from any public profile."
-      mode="highlights"
-      placeholder="Enter @username (e.g. natgeo)…"
       faq={[
         { q: "What exactly can I save?", a: "Both the highlight cover images and the individual stories inside each highlight album — in HD." },
         { q: "Why use a username instead of a link?", a: "Highlights live on the profile, not on a single post. A username lets us list the full collection at once." },
@@ -29,6 +27,6 @@ export default function Page() {
       <p>Highlights are the stories an account chose to keep — tutorials, menus, portfolios, event recaps. Saving them gives you an offline archive of exactly the content the creator considered worth pinning.</p>
       <h2>Tip: paste a highlight link too</h2>
       <p>Got a direct <code>instagram.com/stories/highlights/…</code> link? Paste it into the bar on the home page — it works there as well.</p>
-    </UsernameLanding>
+    </PlatformPage>
   );
 }
