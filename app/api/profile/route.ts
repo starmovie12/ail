@@ -47,11 +47,14 @@ export async function POST(req: NextRequest) {
   let type = "";
   let username = "";
   let highlightId = "";
+  let sessionId: string | null = null;
   try {
     const body = await req.json();
     type = String(body?.type ?? "");
     username = String(body?.username ?? "");
     highlightId = String(body?.highlightId ?? "");
+    // Session ID: sirf POST body, log/store/echo nahi
+    if (typeof body?.sessionId === "string" && body.sessionId.length <= 600) sessionId = body.sessionId;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
@@ -59,20 +62,20 @@ export async function POST(req: NextRequest) {
   try {
     switch (type) {
       case "dp": {
-        const profile = await extractProfile(username);
+        const profile = await extractProfile(username, { sessionId });
         return NextResponse.json(profile);
       }
       case "feed": {
-        return NextResponse.json(await extractProfileFeed(username));
+        return NextResponse.json(await extractProfileFeed(username, { sessionId }));
       }
       case "stories": {
-        return NextResponse.json(await extractStories(username));
+        return NextResponse.json(await extractStories(username, { sessionId }));
       }
       case "highlights": {
-        return NextResponse.json(await extractHighlights(username));
+        return NextResponse.json(await extractHighlights(username, { sessionId }));
       }
       case "highlight-items": {
-        return NextResponse.json({ items: await extractHighlightItems(highlightId) });
+        return NextResponse.json({ items: await extractHighlightItems(highlightId, { sessionId }) });
       }
       default:
         return NextResponse.json({ error: "Unknown request type." }, { status: 400 });
