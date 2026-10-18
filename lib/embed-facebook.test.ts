@@ -57,3 +57,24 @@ test("Facebook candidates: reel/{id} sabse pehle, duplicates nahi", () => {
   assert.equal(new Set(keys).size, keys.length);
   assert.ok(c.some((x) => x.url.startsWith("https://m.facebook.com/")));
 });
+
+import { parseProfileOg } from "./instagram-extractor";
+
+test("Instagram profile OG tags: DP + followers/following/posts + bio", () => {
+  const html = `<meta property="og:title" content="Happy Singh (@urshappy) • Instagram photos and videos">
+  <meta property="og:description" content="1.2M Followers, 345 Following, 6,789 Posts - Happy Singh (@urshappy) on Instagram: &quot;Hello world&quot;">
+  <meta property="og:image" content="https://scontent.cdninstagram.com/v/t51/dp.jpg?a=1&amp;b=2">`;
+  const u = parseProfileOg(html, "urshappy");
+  assert.equal(u.full_name, "Happy Singh");
+  assert.equal(u.profile_pic_url_hd, "https://scontent.cdninstagram.com/v/t51/dp.jpg?a=1&b=2");
+  assert.equal(u.edge_followed_by.count, 1_200_000);
+  assert.equal(u.edge_follow.count, 345);
+  assert.equal(u.edge_owner_to_timeline_media.count, 6789);
+  assert.equal(u.biography, "Hello world");
+});
+
+test("Instagram profile OG: generic login-page (username nahi) ki image galti se nahi leta", () => {
+  const html = `<meta property="og:title" content="Instagram"><meta property="og:image" content="https://static.cdninstagram.com/logo.png">`;
+  assert.equal(parseProfileOg(html, "urshappy"), null);
+  assert.equal(parseProfileOg("<html></html>", "urshappy"), null);
+});
