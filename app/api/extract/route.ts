@@ -5,11 +5,9 @@ import {
   extractHighlightItems,
   ExtractError,
   parseInstagramUrl,
-  fetchViaSnapSave,
-  fetchViaPublicResolver,
-  resolveFacebookShortlink,
   type RequestOptions,
 } from "@/lib/instagram-extractor";
+import { extractFacebookVideo, FbError } from "@/lib/facebook-extractor";
 import {
   coreToUi,
   storyItemsToUi,
@@ -24,7 +22,7 @@ import { validateCobaltInstance } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const STORY_RE = /instagram\.com\/stories\/([\w.]+)(?:\/(\d+))?/i;
 
@@ -145,257 +143,34 @@ function toUnifiedPayload(
   };
 }
 
-type LegacyMedia = {
-  type: "video" | "image";
-  url: string;
-  thumbnail?: string;
-  qualities?: { label: string; url: string }[];
-};
-type LegacyResult = {
-  success?: boolean;
-  media?: LegacyMedia[];
-  caption?: string;
-  author?: { username?: string };
-} | null;
-
-/** SnapSave / public-resolver ka jawab → site ka Unified format (quality list ke saath). */
-function legacyToUnified(
-  r: LegacyResult,
-  platform: "instagram" | "facebook",
-  targetUrl: string,
-  shortcode: string
-): UnifiedExtractResponse | null {
-  if (!r?.success || !r.media?.length) return null;
-  const slides: Slide[] = r.media
-    .filter((m) => m?.url)
-    .map((m) => ({
-      type: m.type === "video" ? "video" : "image",
-      url: m.url,
-      thumbnail: m.thumbnail || m.url,
-      versions: m.qualities?.length
-        ? m.qualities.map((q) => ({ label: q.label, url: q.url }))
-        : [{ label: m.type === "video" ? "HD" : "Original", url: m.url }],
-    }));
-  if (!slides.length) return null;
-  const caption = r.caption ?? "";
-  return toUnifiedPayload(
-    {
-      kind: slides.length > 1 ? "carousel" : slides[0].type === "video" ? "reel" : "post",
-      shortcode,
-      username: r.author?.username || `${platform}_creator`,
-      caption,
-      hashtags: extractHashtags(caption),
-      mentions: extractMentions(caption),
-      thumbnail: slides[0].thumbnail,
-      slides,
-    },
-    platform,
-    targetUrl
-  );
-}
-
-/** 2. Public Fallback Resolvers for Instagram & Facebook (from instagrab-main) */
-async function fetchViaPublicFallback(
-  targetUrl: string,
-  shortcode: string,
-  platform: "instagram" | "facebook",
+/** 3. Facebook video / reel / share-link — shared multi-engine extractor (lib/facebook-extractor.ts) */
+async function extractFacebook(
+  rawUrl: string,
   cobaltInstance?: string
-): Promise<UnifiedExtractResponse | null> {
-  // 2A. Try Instagram Embed HTML parser if platform is Instagram
-  if (platform === "instagram") {
-    try {
-      const embedRes = await fetch(
-        `https://www.instagram.com/p/${shortcode}/embed/captioned/`,
-        {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          },
-          signal: AbortSignal.timeout(8000),
-        }
-      );
-      if (embedRes.ok) {
-        const html = await embedRes.text();
-        const videoMatches = [
-          ...html.matchAll(/"video_url":\s*"([^"]+)"/g),
-        ].map((m) => decodeEscaped(m[1]) || "");
-        const displayMatches = [
-          ...html.matchAll(/"display_url":\s*"([^"]+)"/g),
-        ].map((m) => decodeEscaped(m[1]) || "");
-
-        const userMatch = html.match(/class="UsernameText"[^>]*>([^<]+)</i);
-        const captionMatch = html.match(/class="Caption"[^>]*>([\s\S]*?)<\/div>/i);
-        const cleanCaption = captionMatch
-          ? captionMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-          : "";
-
-        if (videoMatches[0] || displayMatches[0]) {
-          const isVid = Boolean(videoMatches[0]);
-          const mediaUrl = videoMatches[0] || displayMatches[0];
-          const thumb = displayMatches[0] || mediaUrl;
-          const slide: Slide = {
-            type: isVid ? "video" : "image",
-            url: mediaUrl,
-            thumbnail: thumb,
-            versions: [{ label: "HD", url: mediaUrl }],
-          };
-          const ui: ExtractResult = {
-            kind: isVid ? "reel" : "post",
-            shortcode,
-            username: userMatch?.[1]?.trim() || "instagram_user",
-            caption: cleanCaption,
-            hashtags: extractHashtags(cleanCaption),
-            mentions: extractMentions(cleanCaption),
-            thumbnail: thumb,
-            slides: [slide],
-          };
-          return toUnifiedPayload(ui, "instagram", targetUrl);
-        }
-      }
-    } catch {}
+): Promise<UnifiedExtractResponse> {
+  let fb;
+  try {
+    fb = await extractFacebookVideo(rawUrl, cobaltInstance);
+  } catch (e) {
+    if (e instanceof FbError) throw new ExtractError(e.message, e.code);
+    throw e;
   }
 
-  // 2A+. SnapSave + public resolvers (parallel; priority order mein pehla jawab lo)
-  const settled = await Promise.allSettled([
-    fetchViaSnapSave(targetUrl, shortcode, platform),
-    fetchViaPublicResolver(targetUrl, shortcode, platform),
-  ]);
-  for (const r of settled) {
-    if (r.status !== "fulfilled") continue;
-    const unified = legacyToUnified(r.value as LegacyResult, platform, targetUrl, shortcode);
-    if (unified) return unified;
-  }
-
-  // 2B. Try Custom Cobalt Instance if provided
-  const cobaltUrl = (
-    cobaltInstance ||
-    process.env.COBALT_INSTANCE ||
-    ""
-  )
-    .trim()
-    .replace(/\/$/, "");
-
-  if (cobaltUrl) {
-    try {
-      const res = await fetch(`${cobaltUrl}/`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: targetUrl }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.url) {
-          const isVid = !data.url.includes(".jpg");
-          const slide: Slide = {
-            type: isVid ? "video" : "image",
-            url: data.url,
-            thumbnail: data.url,
-            versions: [{ label: "HD", url: data.url }],
-          };
-          return toUnifiedPayload(
-            {
-              kind: isVid ? "reel" : "post",
-              shortcode,
-              username: `${platform}_creator`,
-              caption: "",
-              hashtags: [],
-              mentions: [],
-              thumbnail: data.url,
-              slides: [slide],
-            },
-            platform,
-            targetUrl
-          );
-        }
-      }
-    } catch {}
-  }
-
-  return null;
-}
-
-/** 3. Native Facebook Video, Reel & Shortlink Extractor (from instagrab-main) */
-const FB_DESKTOP_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-const FB_BOT_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
-const FB_MOBILE_UA =
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
-
-/** Ek Facebook page (ek User-Agent) scrape karo. Video na mile to null — photo sirf photo/post links par. */
-async function scrapeFacebookPage(
-  pageUrl: string,
-  ua: string,
-  id: string,
-  canonicalUrl: string
-): Promise<UnifiedExtractResponse | null> {
-  const res = await fetch(pageUrl, {
-    redirect: "follow",
-    headers: {
-      "User-Agent": ua,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) return null;
-  const html = await res.text();
-
-  const hdMatch =
-    html.match(/browser_native_hd_url["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/playable_url_quality_hd["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/hd_src_no_ratelimit["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/hd_src["']?\s*:\s*["']([^"']+)["']/i);
-
-  const sdMatch =
-    html.match(/browser_native_sd_url["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/playable_url["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/sd_src_no_ratelimit["']?\s*:\s*["']([^"']+)["']/i) ||
-    html.match(/sd_src["']?\s*:\s*["']([^"']+)["']/i);
-
-  const ogVideo =
-    metaContent(html, "og:video:secure_url") ||
-    metaContent(html, "og:video") ||
-    metaContent(html, "og:video:url");
-
-  const hdUrl = decodeEscaped(hdMatch?.[1]);
-  const sdUrl = decodeEscaped(sdMatch?.[1]);
-  const videoUrl = hdUrl || sdUrl || decodeEscaped(ogVideo);
-
-  const thumb =
-    metaContent(html, "og:image") || metaContent(html, "twitter:image") || "";
-
-  const title =
-    metaContent(html, "og:title") || metaContent(html, "twitter:title") || "Facebook Media";
-  const caption =
-    metaContent(html, "og:description") || metaContent(html, "twitter:description") || title;
-
-  // Video link par sirf thumbnail mile to usse "photo" bana ke NAHI dena — warna user ko video ki jagah
-  // image download hoti hai. Aise me null return → SnapSave / resolvers chalenge.
-  const isPhotoLike = /\/photo|\/photos\/|\/posts\/|story\.php|\/permalink/i.test(canonicalUrl);
-  if (!videoUrl && !(thumb && isPhotoLike)) return null;
-
-  const isVideo = Boolean(videoUrl);
-  const versions: { label: string; url: string }[] = [];
-  if (hdUrl) versions.push({ label: "1080p HD", url: hdUrl });
-  if (sdUrl) versions.push({ label: "720p SD", url: sdUrl });
-  if (!versions.length && videoUrl) versions.push({ label: "HD", url: videoUrl });
-  if (!isVideo && thumb) versions.push({ label: "Original", url: thumb });
-
+  const isVideo = fb.kind === "video";
   const slide: Slide = {
     type: isVideo ? "video" : "image",
-    url: videoUrl || thumb,
-    thumbnail: thumb || (videoUrl as string),
-    versions,
+    url: fb.url,
+    thumbnail: fb.thumbnail || fb.url,
+    versions: fb.versions.map((v) => ({
+      label: v.label === "HD" ? "1080p HD" : v.label === "SD" ? "720p SD" : v.label,
+      url: v.url,
+    })),
   };
-
+  const caption = fb.caption || fb.title || "";
   return toUnifiedPayload(
     {
       kind: isVideo ? "reel" : "post",
-      shortcode: id,
+      shortcode: fb.id,
       username: "facebook_video",
       caption,
       hashtags: extractHashtags(caption),
@@ -404,57 +179,9 @@ async function scrapeFacebookPage(
       slides: [slide],
     },
     "facebook",
-    canonicalUrl,
-    thumb || null,
-    title
-  );
-}
-
-async function extractFacebook(
-  rawUrl: string,
-  cobaltInstance?: string
-): Promise<UnifiedExtractResponse> {
-  const resolvedUrl = await resolveFacebookShortlink(rawUrl);
-  try {
-    if (platformOfHost(new URL(resolvedUrl).hostname) !== "facebook") {
-      throw new ExtractError("That doesn't look like a Facebook link.", "INVALID_URL");
-    }
-  } catch (e) {
-    if (e instanceof ExtractError) throw e;
-    throw new ExtractError("That doesn't look like a valid link.", "INVALID_URL");
-  }
-  const idMatch =
-    resolvedUrl.match(
-      /(?:videos|reel|watch|posts|photos|r|v)\/(?:[^\s/?#]+\/)?([0-9A-Za-z_-]+)/i
-    ) ||
-    resolvedUrl.match(/[?&](?:v|story_fbid|fbid)=([0-9A-Za-z_-]+)/i) ||
-    rawUrl.match(/fb\.watch\/([0-9A-Za-z_-]+)/i);
-
-  const id = idMatch?.[1] || `fb_${Date.now()}`;
-
-  // 3 tareeke ek saath (parallel): desktop, Facebook-bot (og:video deta hai), aur m.facebook.com mobile.
-  // Priority order mein pehla jawab lo. (Sequential karne se 30s ka limit khatam ho jata tha.)
-  const mobileUrl = resolvedUrl.replace(/(?:www\.|web\.)?facebook\.com/, "m.facebook.com");
-  const attempts = await Promise.allSettled([
-    scrapeFacebookPage(resolvedUrl, FB_DESKTOP_UA, id, resolvedUrl),
-    scrapeFacebookPage(resolvedUrl, FB_BOT_UA, id, resolvedUrl),
-    scrapeFacebookPage(mobileUrl, FB_MOBILE_UA, id, resolvedUrl),
-  ]);
-  for (const a of attempts) {
-    if (a.status === "fulfilled" && a.value) return a.value;
-  }
-
-  const fbFallback = await fetchViaPublicFallback(
-    resolvedUrl,
-    id,
-    "facebook",
-    cobaltInstance
-  );
-  if (fbFallback) return fbFallback;
-
-  throw new ExtractError(
-    "Unable to extract this Facebook link. Please make sure the video or reel is public.",
-    "NOT_FOUND"
+    fb.canonicalUrl,
+    fb.thumbnail,
+    fb.title || "Facebook Media"
   );
 }
 
