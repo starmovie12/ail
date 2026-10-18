@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isRateLimited } from "@/lib/rate-limit";
-import { diagnoseInstagram, parseInstagramUrl } from "@/lib/instagram-extractor";
+import { diagnoseInstagram, diagnoseProfile, parseInstagramUrl, normalizeUsername } from "@/lib/instagram-extractor";
 import { diagnoseFacebook } from "@/lib/facebook-extractor";
 
 export const runtime = "nodejs";
@@ -13,6 +13,7 @@ export const maxDuration = 60;
  * Browser me kholo:
  *   /api/diag?url=https://www.instagram.com/reel/XXXXXXXXXXX/
  *   /api/diag?url=https://www.facebook.com/reel/1234567890123456
+ *   /api/diag?url=https://www.instagram.com/username/      (profile / DP)
  *
  * Har engine alag chalke batata hai: HTTP status, login-wall, kaun chala / kaun block hua.
  * Koi cookie / key / session output me NAHI aata (sirf "set hai ya nahi"). Rate-limited.
@@ -42,7 +43,16 @@ export async function GET(req: NextRequest) {
 
   if (/instagram\.com|instagr\.am/i.test(raw)) {
     const parsed = parseInstagramUrl(raw);
-    if (!parsed) return pretty({ error: "Could not read an Instagram post/reel code from that link.", env });
+    if (!parsed) {
+      // post/reel nahi → profile (instagram.com/username)
+      try {
+        const username = normalizeUsername(raw);
+        const rows = await diagnoseProfile(username);
+        return pretty({ platform: "instagram-profile", username, env, anyEngineWorks: rows.some((r) => r.ok), rows });
+      } catch {
+        return pretty({ error: "Could not read an Instagram post/reel code or username from that link.", env });
+      }
+    }
     const rows = await diagnoseInstagram(parsed.shortcode);
     return pretty({ platform: "instagram", shortcode: parsed.shortcode, env, anyEngineWorks: rows.some((r) => r.ok && r.engine.startsWith("engine") || r.ok && r.engine.startsWith("third")), rows });
   }
