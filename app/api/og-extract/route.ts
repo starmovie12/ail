@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isRateLimited } from "@/lib/rate-limit";
+import { extractFacebookVideo, FbError } from "@/lib/facebook-extractor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * Open-Graph media extractor for the multi-platform downloaders (Pinterest,
@@ -59,6 +61,27 @@ export async function POST(req: NextRequest) {
   }
   if (target.protocol !== "https:" || !ALLOWED_PAGE_HOSTS.has(target.hostname)) {
     return NextResponse.json({ error: "Only Pinterest, Threads, TikTok and Facebook links are supported here." }, { status: 400 });
+  }
+
+  // Facebook: sirf og-tags kaafi nahi (thumbnail hi milta tha) — shared multi-engine extractor use karo.
+  if (/(^|\.)(facebook\.com|fb\.watch)$/i.test(target.hostname)) {
+    try {
+      const fb = await extractFacebookVideo(target.toString());
+      const isVideo = fb.kind === "video";
+      return NextResponse.json({
+        video: isVideo ? fb.url : null,
+        image: isVideo ? fb.thumbnail : fb.url,
+        title: fb.title,
+        description: fb.caption,
+        host: target.hostname,
+        versions: fb.versions,
+      });
+    } catch (e) {
+      if (e instanceof FbError) {
+        return NextResponse.json({ error: e.message }, { status: e.code === "INVALID_URL" ? 400 : 404 });
+      }
+      return NextResponse.json({ error: "Couldn't reach that page — try again in a moment." }, { status: 502 });
+    }
   }
 
   try {
