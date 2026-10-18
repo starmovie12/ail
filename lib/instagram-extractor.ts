@@ -1778,10 +1778,53 @@ export function normalizeUsername(input: string): string {
   return s.toLowerCase();
 }
 
-async function fetchProfileUser(username: string, cfg: Cfg, sessionOverride?: string | null): Promise<Any> {
-  const cookie = sessionCookie(sessionOverride);
+/** "1.2M" / "12,345" / "3.4K" → number */
+function parseCount(raw: string): number {
+  const t = raw.replace(/,/g, '').trim();
+  const m = t.match(/^([\d.]+)\s*([KMB])?$/i);
+  if (!m) return 0;
+  const mult = { K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase() as 'K' | 'M' | 'B'] ?? 1;
+  return Math.round(parseFloat(m[1]) * mult);
+}
 
-  const direct = async (): Promise<Any | null> => {
+/**
+ * Profile page ke OG tags se (logged-out, bot User-Agent) basic profile: DP, naam, followers/following/posts, bio.
+ * Generic "Instagram" login-page ka og:image galti se na le — isliye og:title me @username hona zaroori hai.
+ */
+export function parseProfileOg(html: string, username: string): Any | null {
+  const meta = (prop: string) => {
+    const m =
+      html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']*)["']`, 'i')) ||
+      html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${prop}["']`, 'i'));
+    return m ? decodeHtmlEntities(m[1]) : '';
+  };
+  const image = meta('og:image');
+  const title = meta('og:title');
+  const desc = meta('og:description');
+  if (!image || !/^https?:\/\//i.test(image)) return null;
+  if (!title.toLowerCase().includes('@' + username.toLowerCase())) return null;
+
+  const counts = desc.match(/([\d.,]+\s*[KMB]?)\s+Followers?,\s*([\d.,]+\s*[KMB]?)\s+Following,\s*([\d.,]+\s*[KMB]?)\s+Posts?/i);
+  const bio = desc.match(/on Instagram:\s*["“”]([\s\S]*?)["“”]\s*$/)?.[1] ?? '';
+  return {
+    username,
+    full_name: title.split('(@')[0].trim(),
+    id: '',
+    is_private: false,
+    biography: bio,
+    profile_pic_url_hd: image,
+    edge_followed_by: { count: counts ? parseCount(counts[1]) : 0 },
+    edge_follow: { count: counts ? parseCount(counts[2]) : 0 },
+    edge_owner_to_timeline_media: { count: counts ? parseCount(counts[3]) : 0, edges: [] },
+    __source: 'og_tags',
+  };
+}
+
+type ProfileTry = { user: Any | null; status: number };
+
+/** Engine A: web endpoint (www.instagram.com) */
+async function profileViaWeb(username: string, cfg: Cfg, cookie: string | null): Promise<ProfileTry> {
+  try {
     const res = await fetch(cfg.webProfileInfoUrl + encodeURIComponent(username), {
       headers: {
         'User-Agent': cfg.userAgent,
@@ -1794,10 +1837,65 @@ async function fetchProfileUser(username: string, cfg: Cfg, sessionOverride?: st
       signal: AbortSignal.timeout(8000),
       cache: 'no-store',
     });
-    if (res.status === 404) throw new ExtractError("This account doesn't exist.", 'NOT_FOUND');
-    if (!res.ok) return null;
+    if (!res.ok) return { user: null, status: res.status };
     const json: Any = await res.json().catch(() => null);
-    return json?.data?.user ?? null;
+    return { user: json?.data?.user ?? null, status: res.status };
+  } catch {
+    return { user: null, status: 0 };
+  }
+}
+
+/** Engine B: same endpoint, mobile-API host + Android app headers (bina login ke bhi aksar chalta hai) */
+async function profileViaMobile(username: string, cfg: Cfg, cookie: string | null): Promise<ProfileTry> {
+  try {
+    const res = await fetch(`https://i.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, {
+      headers: { ...MOBILE_HEADERS, 'x-ig-app-id': cfg.appId, ...(cookie ? { Cookie: cookie } : {}) },
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return { user: null, status: res.status };
+    const json: Any = await res.json().catch(() => null);
+    return { user: json?.data?.user ?? null, status: res.status };
+  } catch {
+    return { user: null, status: 0 };
+  }
+}
+
+/** Engine C: profile page ke OG tags (bot User-Agents). DP thodi chhoti ho sakti hai, par kuch na milne se behtar. */
+async function profileViaOg(username: string): Promise<Any | null> {
+  const uas = ['facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)', 'Mozilla/5.0 (compatible; Twitterbot/1.0)'];
+  const tries = await Promise.all(
+    uas.map(async (ua) => {
+      try {
+        const res = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/`, {
+          headers: { 'User-Agent': ua, Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
+          signal: AbortSignal.timeout(8000),
+          cache: 'no-store',
+        });
+        if (!res.ok) return null;
+        return parseProfileOg((await res.text()).slice(0, 1_500_000), username);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return tries.find(Boolean) ?? null;
+}
+
+async function fetchProfileUser(username: string, cfg: Cfg, sessionOverride?: string | null): Promise<Any> {
+  const cookie = sessionCookie(sessionOverride);
+
+  const direct = async (): Promise<Any | null> => {
+    // Teeno engine ek saath (≤ 8s). Full data (A/B) ko OG (C) par priority.
+    const [a, b, c] = await Promise.all([
+      profileViaWeb(username, cfg, cookie),
+      profileViaMobile(username, cfg, cookie),
+      profileViaOg(username),
+    ]);
+    if (a.user) return a.user;
+    if (b.user) return b.user;
+    if (a.status === 404 && b.status === 404 && !c) throw new ExtractError("This account doesn't exist.", 'NOT_FOUND');
+    return c;
   };
 
   const viaProvider = async (): Promise<Any | null> => {
@@ -1826,6 +1924,36 @@ async function fetchProfileUser(username: string, cfg: Cfg, sessionOverride?: st
     "Couldn't reach Instagram right now. Please try again in a minute.",
     'EXTRACTOR_DOWN'
   );
+}
+
+/** /api/diag ke liye: profile engines ka haal (koi secret output me nahi). */
+export async function diagnoseProfile(usernameInput: string): Promise<DiagRow[]> {
+  const username = normalizeUsername(usernameInput);
+  const cfg = await getLiveConfig();
+  const cookie = sessionCookie(null);
+  const timed = async (engine: string, fn: () => Promise<{ ok: boolean; note: string }>): Promise<DiagRow> => {
+    const t0 = Date.now();
+    try {
+      const r = await fn();
+      return { engine, ok: r.ok, ms: Date.now() - t0, note: r.note };
+    } catch (e) {
+      return { engine, ok: false, ms: Date.now() - t0, note: String((e as Error)?.message || e).slice(0, 100) };
+    }
+  };
+  return Promise.all([
+    timed('profile:web-endpoint', async () => {
+      const r = await profileViaWeb(username, cfg, cookie);
+      return { ok: !!r.user, note: `HTTP ${r.status}${cookie ? ' (with session)' : ' (no session)'}` };
+    }),
+    timed('profile:mobile-endpoint', async () => {
+      const r = await profileViaMobile(username, cfg, cookie);
+      return { ok: !!r.user, note: `HTTP ${r.status}${cookie ? ' (with session)' : ' (no session)'}` };
+    }),
+    timed('profile:og-tags', async () => {
+      const u = await profileViaOg(username);
+      return { ok: !!u, note: u ? `dp found, followers=${u.edge_followed_by?.count}` : 'no usable og tags (login wall?)' };
+    }),
+  ]);
 }
 
 function userToProfile(u: Any, fallbackName: string): ProfileResult {
