@@ -913,7 +913,7 @@ export async function fetchViaSnapSave(url: string, shortcode: string, platform:
 /** Sirf tests ke liye (lib/snapsave.test.ts) — production code isse use nahi karta. */
 export const __snapsaveInternals = { unpackSnapScript, snapHtmlFromResponse, parseSnapHtml, unpackHunter, unpackDean };
 
-async function fetchViaCobalt(
+export async function fetchViaCobalt(
   url: string,
   shortcode: string,
   customInstance?: string | null,
@@ -1409,22 +1409,41 @@ async function viaGraphql(shortcode: string, cfg: Cfg, cookie: string | null): P
 
   const variables = JSON.stringify({ shortcode, fetch_tagged_user_count: null, hoisted_comment_id: null, hoisted_reply_id: null });
 
-  // 1) POST (what the web app does)
-  try {
-    const res = await fetch(cfg.graphqlUrl, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ variables, doc_id: cfg.docId, lsd: cfg.lsd }).toString(),
-      signal: AbortSignal.timeout(7000),
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const json: Any = await res.json().catch(() => null);
-      const node = json?.data?.xdt_shortcode_media ?? json?.data?.shortcode_media;
-      const out = node ? graphNodeToResult(node, shortcode, 'graphql') : null;
-      if (out) return out;
-    }
-  } catch {}
+  // 1) POST (what the web app does). Instagram doc_id rotate karta rehta hai, isliye config wala + ek
+  //    known-recent doc_id dono try hote hain (dono ek saath, jo pehle jawab de).
+  const docIds = Array.from(new Set([cfg.docId, FALLBACK_DOC_ID].filter(Boolean)));
+  const posts = await Promise.all(
+    docIds.map(async (docId) => {
+      try {
+        const res = await fetch(cfg.graphqlUrl, {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-FB-Friendly-Name': 'PolarisPostActionLoadPostQueryQuery',
+          },
+          body: new URLSearchParams({
+            variables,
+            doc_id: docId,
+            lsd: cfg.lsd,
+            fb_api_caller_class: 'RelayModern',
+            fb_api_req_friendly_name: 'PolarisPostActionLoadPostQueryQuery',
+            server_timestamps: 'true',
+          }).toString(),
+          signal: AbortSignal.timeout(7000),
+          cache: 'no-store',
+        });
+        if (!res.ok) return null;
+        const json: Any = await res.json().catch(() => null);
+        const node = json?.data?.xdt_shortcode_media ?? json?.data?.shortcode_media;
+        return node ? graphNodeToResult(node, shortcode, 'graphql') : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  const postHit = posts.find(Boolean);
+  if (postHit) return postHit;
 
   // 2) GET variant (older doc_ids still answer this)
   try {
@@ -1432,7 +1451,7 @@ async function viaGraphql(shortcode: string, cfg: Cfg, cookie: string | null): P
       `https://www.instagram.com/graphql/query/?doc_id=${encodeURIComponent(cfg.docId)}&variables=${encodeURIComponent(
         JSON.stringify({ shortcode })
       )}`,
-      { headers, signal: AbortSignal.timeout(6000), cache: 'no-store' }
+      { headers, signal: AbortSignal.timeout(5000), cache: 'no-store' }
     );
     if (res.ok) {
       const json: Any = await res.json().catch(() => null);
@@ -1441,6 +1460,113 @@ async function viaGraphql(shortcode: string, cfg: Cfg, cookie: string | null): P
     }
   } catch {}
   return null;
+}
+
+/** Instagram ka recent web GraphQL doc_id (config wala purana ho jaye to ye backup chalta hai). */
+const FALLBACK_DOC_ID = '8845758582119845';
+
+const EMBED_HEADERS = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-GB,en;q=0.9',
+  'Cache-Control': 'max-age=0',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+};
+
+/**
+ * Instagram embed page ka data ek JSON-string ke andar JSON hota hai:  "contextJSON":"{\"gql_data\":{…}}"
+ * (double-encoded) — isliye purana `"video_url":"…"` regex ab kaam nahi karta. Yahan string ko scan karke
+ * do baar parse karte hain.
+ */
+export function parseEmbedContext(html: string): Any | null {
+  const m = /"contextJSON"\s*:\s*"/.exec(html);
+  if (!m) return null;
+  let i = m.index + m[0].length;
+  let body = '';
+  while (i < html.length) {
+    const ch = html[i];
+    if (ch === '\\') {
+      body += ch + (html[i + 1] ?? '');
+      i += 2;
+      continue;
+    }
+    if (ch === '"') break;
+    body += ch;
+    i++;
+  }
+  try {
+    const inner = JSON.parse(`"${body}"`);
+    return typeof inner === 'string' ? JSON.parse(inner) : inner;
+  } catch {
+    return null;
+  }
+}
+
+/** Engine: embed page → contextJSON (bina login ke, datacenter IP par bhi aksar chalta hai). */
+async function viaEmbedContext(shortcode: string): Promise<ExtractResult | null> {
+  for (const path of [`/p/${shortcode}/embed/captioned/`, `/p/${shortcode}/embed/`]) {
+    try {
+      const res = await fetch(`https://www.instagram.com${path}`, {
+        headers: EMBED_HEADERS,
+        signal: AbortSignal.timeout(7000),
+        cache: 'no-store',
+      });
+      if (!res.ok) continue;
+      const ctx = parseEmbedContext(await res.text());
+      const node = ctx?.gql_data?.shortcode_media ?? ctx?.gql_data?.xdt_shortcode_media ?? ctx?.shortcode_media;
+      const out = node ? graphNodeToResult(node, shortcode, 'embed_context') : null;
+      if (out) return out;
+    } catch {}
+  }
+  return null;
+}
+
+const MOBILE_HEADERS = {
+  'x-ig-app-locale': 'en_US',
+  'x-ig-device-locale': 'en_US',
+  'x-ig-mapped-locale': 'en_US',
+  'user-agent': 'Instagram 275.0.0.27.98 Android (33/13; 280dpi; 720x1423; Xiaomi; Redmi 7; onclite; qcom; en_US; 458229237)',
+  'accept-language': 'en-US',
+  'x-fb-http-engine': 'Liger',
+  'x-fb-client-ip': 'True',
+  'x-fb-server-cluster': 'True',
+};
+
+async function mobileInfo(mediaId: string): Promise<Any | null> {
+  try {
+    const res = await fetch(`https://i.instagram.com/api/v1/media/${mediaId}/info/`, {
+      headers: MOBILE_HEADERS,
+      signal: AbortSignal.timeout(6000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const json: Any = await res.json().catch(() => null);
+    return json?.items?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Engine: Instagram mobile API — bina login ke (oembed se media id, ya shortcode se pk). */
+async function viaMobileAnon(shortcode: string): Promise<ExtractResult | null> {
+  const pk = shortcodeToPk(shortcode);
+  let item = await mobileInfo(pk);
+  if (!item) {
+    try {
+      const res = await fetch(
+        `https://i.instagram.com/api/v1/oembed/?url=${encodeURIComponent(`https://www.instagram.com/p/${shortcode}/`)}`,
+        { headers: MOBILE_HEADERS, signal: AbortSignal.timeout(5000), cache: 'no-store' }
+      );
+      const json: Any = res.ok ? await res.json().catch(() => null) : null;
+      const mediaId = json?.media_id ? String(json.media_id) : '';
+      if (mediaId && mediaId !== pk) item = await mobileInfo(mediaId);
+    } catch {}
+  }
+  return item ? mobileItemToResult(item, shortcode, 'mobile_anon') : null;
 }
 
 async function viaSessionMobile(shortcode: string, cookie: string): Promise<ExtractResult | null> {
@@ -1532,34 +1658,110 @@ export async function extract(inputUrl: string, opts: RequestOptions = {}): Prom
   const cfg = await getLiveConfig();
   const cookie = sessionCookie(opts.sessionId);
 
+  // Har stage ki apni deadline — poora function Vercel ke time-limit ke andar rahe.
+  const within = <T>(p: Promise<T | null>, ms: number): Promise<T | null> =>
+    Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
+  // Stage 1 (direct): saare Instagram-side tareeke EK SAATH — jo pehle sahi jawab de.
   const direct = () =>
-    firstSuccess<ExtractResult>([
-      cookie ? safe(viaSessionMobile(shortcode, cookie)) : Promise.resolve(null),
-      safe(viaGraphql(shortcode, cfg, cookie)),
-    ]);
-  const fallback = () => safe(viaFallbackApi(canonicalUrl, shortcode, cfg));
+    within(
+      firstSuccess<ExtractResult>([
+        cookie ? safe(viaSessionMobile(shortcode, cookie)) : Promise.resolve(null),
+        safe(viaEmbedContext(shortcode)),
+        safe(viaMobileAnon(shortcode)),
+        safe(viaGraphql(shortcode, cfg, cookie)),
+      ]),
+      10000
+    );
+  const fallback = () => within(safe(viaFallbackApi(canonicalUrl, shortcode, cfg)), 8000);
 
   for (const stage of cfg.useFallbackApi ? [fallback, direct] : [direct, fallback]) {
     const r = await stage();
     if (r) return r;
   }
 
+  // Stage 3 (last resort): third-party engines — link sirf yahin bahar jata hai.
   const cobaltInstance = opts.cobaltInstance || process.env.COBALT_INSTANCE || null;
   const cobaltApiKey = process.env.COBALT_API_KEY || null;
-  const last = await firstSuccess<ExtractResult>([
-    safe(fetchViaSnapSave(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
-    safe(fetchViaInstagramEmbed(shortcode).then(legacyToCore)),
-    safe(fetchViaPublicResolver(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
-    cobaltInstance
-      ? safe(fetchViaCobalt(canonicalUrl, shortcode, cobaltInstance, cobaltApiKey, 'instagram').then(legacyToCore))
-      : Promise.resolve(null),
-  ]);
+  const last = await within(
+    firstSuccess<ExtractResult>([
+      safe(fetchViaSnapSave(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
+      safe(fetchViaInstagramEmbed(shortcode).then(legacyToCore)),
+      safe(fetchViaPublicResolver(canonicalUrl, shortcode, 'instagram').then(legacyToCore)),
+      cobaltInstance
+        ? safe(fetchViaCobalt(canonicalUrl, shortcode, cobaltInstance, cobaltApiKey, 'instagram').then(legacyToCore))
+        : Promise.resolve(null),
+    ]),
+    10000
+  );
   if (last) return last;
 
   throw new ExtractError(
     "We couldn't fetch this post right now. It may be private, or Instagram is blocking our server — please try again in a minute.",
     'EXTRACTOR_DOWN'
   );
+}
+
+/* ───────────────────────── diagnostics (/api/diag) ───────────────────────── */
+
+type DiagRow = { engine: string; ok: boolean; ms: number; note?: string };
+
+/**
+ * Har Instagram engine ko ALAG chalake batata hai kaun chal raha hai aur kaun block hai.
+ * Koi secret/cookie output me nahi aata. Sirf /api/diag use karta hai.
+ */
+export async function diagnoseInstagram(shortcode: string): Promise<DiagRow[]> {
+  const cfg = await getLiveConfig();
+  const cookie = sessionCookie(null);
+  const canonical = `https://www.instagram.com/p/${shortcode}/`;
+
+  const run = async (engine: string, fn: () => Promise<unknown>): Promise<DiagRow> => {
+    const t0 = Date.now();
+    try {
+      const r = await fn();
+      return { engine, ok: !!r, ms: Date.now() - t0 };
+    } catch (e) {
+      return { engine, ok: false, ms: Date.now() - t0, note: String((e as Error)?.message || e).slice(0, 120) };
+    }
+  };
+
+  const rawStatus = async (engine: string, url: string, init: RequestInit, check: (body: string) => string): Promise<DiagRow> => {
+    const t0 = Date.now();
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'manual' });
+      const body = (await res.text().catch(() => '')).slice(0, 2_000_000);
+      const loc = res.headers.get('location');
+      return {
+        engine,
+        ok: res.ok,
+        ms: Date.now() - t0,
+        note: `HTTP ${res.status}${loc ? ' → ' + loc.slice(0, 60) : ''}; ${check(body)}`,
+      };
+    } catch (e) {
+      return { engine, ok: false, ms: Date.now() - t0, note: String((e as Error)?.message || e).slice(0, 120) };
+    }
+  };
+
+  const rows = await Promise.all([
+    rawStatus('raw:embed-page', `https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers: EMBED_HEADERS }, (b) =>
+      `${b.length} bytes, contextJSON=${parseEmbedContext(b) ? 'found' : 'missing'}, loginWall=${/accounts\/login/.test(b)}`
+    ),
+    rawStatus('raw:mobile-api', `https://i.instagram.com/api/v1/media/${shortcodeToPk(shortcode)}/info/`, { headers: MOBILE_HEADERS }, (b) => {
+      try {
+        const j = JSON.parse(b);
+        return j?.items?.length ? 'items=yes' : `message=${String(j?.message ?? j?.status ?? 'none').slice(0, 50)}`;
+      } catch {
+        return 'non-JSON reply';
+      }
+    }),
+    run('engine:embed-context', () => viaEmbedContext(shortcode)),
+    run('engine:mobile-anon', () => viaMobileAnon(shortcode)),
+    run('engine:graphql', () => viaGraphql(shortcode, cfg, cookie)),
+    cookie ? run('engine:session-mobile', () => viaSessionMobile(shortcode, cookie)) : Promise.resolve({ engine: 'engine:session-mobile', ok: false, ms: 0, note: 'INSTAGRAM_SESSION_ID not set' }),
+    run('third-party:snapsave', () => fetchViaSnapSave(canonical, shortcode, 'instagram')),
+    run('third-party:public-resolver', () => fetchViaPublicResolver(canonical, shortcode, 'instagram')),
+  ]);
+  return rows;
 }
 
 /* ───────────────────────── profile / feed ───────────────────────── */
